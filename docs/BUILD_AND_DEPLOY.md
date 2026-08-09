@@ -4,7 +4,7 @@
 
 ## Web版
 
-`main` ブランチにpushすると、GitHub ActionsがWeb exportを作り、GitHub Pagesへデプロイします。
+`main` ブランチにpushすると、GitHub ActionsがWeb exportを作り、`gh-pages` ブランチへ配置します。
 
 公開URLの想定:
 
@@ -12,7 +12,7 @@
 https://ochakuu8-sudo.github.io/SHIZUKU/
 ```
 
-GitHub側で Pages の source が `GitHub Actions` になっていない場合は、リポジトリの `Settings > Pages` で変更してください。
+GitHub側で一度だけ、リポジトリの `Settings > Pages` から source を `Deploy from a branch`、branch を `gh-pages`、folder を `/ (root)` にしてください。
 
 ## Windows PC版
 
