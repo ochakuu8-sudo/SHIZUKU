@@ -1,0 +1,14 @@
+{
+  "player": {
+    "name": "主人公",
+    "max_hp": 100,
+    "max_stamina": 10,
+    "gold": 50,
+    "stats": {
+      "str": 5,
+      "charm": 5,
+      "mind": 5,
+      "bond": 0
+    }
+  }
+}
