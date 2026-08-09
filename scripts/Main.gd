@@ -1,5 +1,7 @@
 ﻿extends Control
 
+const UI_FONT := preload("res://assets/fonts/NotoSansCJKjp-Regular.otf")
+
 const SPACE_COLORS := {
 	"start": Color("#3d7a59"),
 	"train": Color("#4b638f"),
@@ -31,8 +33,16 @@ func _ready() -> void:
 	game_state = get_node("/root/GameState")
 	game_state.changed.connect(_render)
 	game_state.event_requested.connect(_show_event)
+	_apply_ui_theme()
 	_build_ui()
 	_render()
+
+
+func _apply_ui_theme() -> void:
+	var app_theme := Theme.new()
+	app_theme.default_font = UI_FONT
+	app_theme.default_font_size = 16
+	theme = app_theme
 
 
 func _build_ui() -> void:
