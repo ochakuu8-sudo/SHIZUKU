@@ -20,6 +20,7 @@ env:
   GODOT_STATUS: stable
   GODOT_RELEASE: "4.5-stable"
   GODOT_TEMPLATES_DIR: /home/runner/.local/share/godot/export_templates/4.5.stable
+  BUILD_DIR: /tmp/shizuku-build
 
 jobs:
   build:
@@ -47,31 +48,33 @@ jobs:
       - name: Import project
         run: /tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64 --headless --import --quit
 
-      - name: Build Web
-        run: |
-          mkdir -p build/web
-          /tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64 --headless --export-release "Web" build/web/index.html
-
       - name: Build Windows PC
         run: |
-          mkdir -p build/windows
-          /tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64 --headless --export-release "Windows Desktop" build/windows/SHIZUKU.exe
-          cd build/windows
-          zip -r ../SHIZUKU-windows.zip .
+          mkdir -p "${BUILD_DIR}/windows"
+          /tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64 --headless --export-release "Windows Desktop" "${BUILD_DIR}/windows/SHIZUKU.exe"
+          cd "${BUILD_DIR}/windows"
+          zip -r "${BUILD_DIR}/SHIZUKU-windows.zip" .
+
+      - name: Build Web
+        run: |
+          mkdir -p "${BUILD_DIR}/web"
+          /tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64 --headless --export-release "Web" "${BUILD_DIR}/web/index.html"
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
           name: SHIZUKU-windows
-          path: build/SHIZUKU-windows.zip
+          path: /tmp/shizuku-build/SHIZUKU-windows.zip
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build/web
+          path: /tmp/shizuku-build/web
 
   deploy:
     needs: build
