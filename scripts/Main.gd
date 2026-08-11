@@ -21,6 +21,7 @@ var board_buttons: Array[Button] = []
 var board_map
 var board_scroll: ScrollContainer
 var last_centered_position := -1
+var map_dragging := false
 
 var location_label: Label
 var route_stage_label: Label
@@ -38,12 +39,14 @@ var event_image: TextureRect
 var choice_box: VBoxContainer
 var event_placeholder_cache: Dictionary = {}
 
+var action_panel: PanelContainer
 var battle_panel: PanelContainer
 var battle_title: Label
 var battle_body: Label
 var route_panel: PanelContainer
 var route_status: Label
 var route_box: VBoxContainer
+var narration_panel: PanelContainer
 var orientation_overlay: PanelContainer
 var roll_button: Button
 var adult_check: CheckBox
@@ -167,12 +170,15 @@ func _build_map_panel() -> Control:
 	board_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	board_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	board_scroll.follow_focus = false
+	board_scroll.gui_input.connect(_on_map_pan_input)
 	board_scroll.get_h_scroll_bar().modulate = Color(1, 1, 1, 0.18)
 	board_scroll.get_v_scroll_bar().modulate = Color(1, 1, 1, 0.18)
 	board_margin.add_child(board_scroll)
 
 	board_map = BOARD_MAP_SCRIPT.new()
 	board_map.configure(game_state.board_data)
+	board_map.mouse_filter = Control.MOUSE_FILTER_PASS
+	board_map.gui_input.connect(_on_map_pan_input)
 	board_scroll.add_child(board_map)
 
 	board_buttons.clear()
@@ -187,33 +193,27 @@ func _build_map_panel() -> Control:
 
 
 func _build_hud_panel() -> Control:
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(342, 0)
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.get_v_scroll_bar().modulate = Color(1, 1, 1, 0.24)
-
 	var side := VBoxContainer.new()
-	side.custom_minimum_size = Vector2(330, 0)
-	side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	side.custom_minimum_size = Vector2(342, 0)
+	side.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	side.add_theme_constant_override("separation", 8)
-	scroll.add_child(side)
 
 	side.add_child(_build_status_card())
 	side.add_child(_build_action_card())
 	side.add_child(_build_route_card())
 	side.add_child(_build_battle_card())
 	side.add_child(_build_narration_card())
-	return scroll
+	return side
 
 
 func _build_status_card() -> Control:
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(0, 150)
+	panel.custom_minimum_size = Vector2(0, 136)
 	panel.add_theme_stylebox_override("panel", _panel_style(Color("#1b2431"), Color("#39475c"), 1, 10))
 
-	var margin := _panel_margin(panel, 12)
+	var margin := _panel_margin(panel, 9)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
+	box.add_theme_constant_override("separation", 5)
 	margin.add_child(box)
 
 	var top := HBoxContainer.new()
@@ -222,13 +222,13 @@ func _build_status_card() -> Control:
 
 	location_label = Label.new()
 	location_label.text = "START"
-	location_label.add_theme_font_size_override("font_size", 22)
+	location_label.add_theme_font_size_override("font_size", 20)
 	location_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(location_label)
 
 	gold_label = Label.new()
 	gold_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	gold_label.add_theme_font_size_override("font_size", 18)
+	gold_label.add_theme_font_size_override("font_size", 17)
 	top.add_child(gold_label)
 
 	route_stage_label = Label.new()
@@ -256,16 +256,16 @@ func _build_status_card() -> Control:
 
 
 func _build_action_card() -> Control:
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _panel_style(Color("#18202a"), Color("#354052"), 1, 10))
+	action_panel = PanelContainer.new()
+	action_panel.add_theme_stylebox_override("panel", _panel_style(Color("#18202a"), Color("#354052"), 1, 10))
 
-	var margin := _panel_margin(panel, 10)
+	var margin := _panel_margin(action_panel, 8)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
+	box.add_theme_constant_override("separation", 6)
 	margin.add_child(box)
 
 	roll_button = _make_button("サイコロを振る", Color("#d77555"), true)
-	roll_button.custom_minimum_size = Vector2(0, 52)
+	roll_button.custom_minimum_size = Vector2(0, 44)
 	roll_button.add_theme_font_size_override("font_size", 19)
 	roll_button.pressed.connect(game_state.roll_dice)
 	box.add_child(roll_button)
@@ -277,7 +277,7 @@ func _build_action_card() -> Control:
 	var train_title := Label.new()
 	train_title.text = "鍛錬"
 	train_title.modulate = Color(1, 1, 1, 0.56)
-	train_title.add_theme_font_size_override("font_size", 13)
+	train_title.add_theme_font_size_override("font_size", 12)
 	box.add_child(train_title)
 
 	var train_row := HBoxContainer.new()
@@ -295,21 +295,21 @@ func _build_action_card() -> Control:
 	var mind_button := _make_button("知性", Color("#5c95a1"))
 	mind_button.pressed.connect(func() -> void: game_state.manual_train("mind"))
 	train_row.add_child(mind_button)
-	return panel
+	return action_panel
 
 
 func _build_route_card() -> Control:
 	route_panel = PanelContainer.new()
 	route_panel.add_theme_stylebox_override("panel", _panel_style(Color("#1d2830"), Color("#465767"), 1, 10))
 
-	var margin := _panel_margin(route_panel, 10)
+	var margin := _panel_margin(route_panel, 8)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
+	box.add_theme_constant_override("separation", 6)
 	margin.add_child(box)
 
 	var title := Label.new()
 	title.text = "ルート選択"
-	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_font_size_override("font_size", 16)
 	box.add_child(title)
 
 	route_status = Label.new()
@@ -363,11 +363,11 @@ func _build_battle_card() -> Control:
 
 
 func _build_narration_card() -> Control:
-	var panel := PanelContainer.new()
-	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", _panel_style(Color("#171e29"), Color("#303b4c"), 1, 10))
+	narration_panel = PanelContainer.new()
+	narration_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	narration_panel.add_theme_stylebox_override("panel", _panel_style(Color("#171e29"), Color("#303b4c"), 1, 10))
 
-	var margin := _panel_margin(panel, 10)
+	var margin := _panel_margin(narration_panel, 8)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
 	margin.add_child(box)
@@ -384,7 +384,7 @@ func _build_narration_card() -> Control:
 	narration_label.fit_content = true
 	narration_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(narration_label)
-	return panel
+	return narration_panel
 
 
 func _render() -> void:
@@ -441,6 +441,8 @@ func _render() -> void:
 		battle_panel.visible = false
 
 	_render_route_choices()
+	action_panel.visible = not route_panel.visible and not battle_panel.visible
+	narration_panel.visible = not route_panel.visible and not battle_panel.visible
 	narration_label.text = "\n".join(game_state.logs.slice(maxi(0, game_state.logs.size() - 5), game_state.logs.size()))
 
 
@@ -585,6 +587,30 @@ func _update_orientation_overlay() -> void:
 
 func _hide_event() -> void:
 	event_overlay.visible = false
+
+
+func _on_map_pan_input(event: InputEvent) -> void:
+	if event is InputEventScreenDrag:
+		_pan_map_by(event.relative)
+		accept_event()
+		return
+
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		map_dragging = event.pressed
+		if map_dragging:
+			accept_event()
+		return
+
+	if event is InputEventMouseMotion and map_dragging and bool(event.button_mask & MOUSE_BUTTON_MASK_LEFT):
+		_pan_map_by(event.relative)
+		accept_event()
+
+
+func _pan_map_by(delta: Vector2) -> void:
+	var max_horizontal: int = maxi(0, int(board_map.size.x - board_scroll.size.x))
+	var max_vertical: int = maxi(0, int(board_map.size.y - board_scroll.size.y))
+	board_scroll.scroll_horizontal = clampi(board_scroll.scroll_horizontal - int(delta.x), 0, max_horizontal)
+	board_scroll.scroll_vertical = clampi(board_scroll.scroll_vertical - int(delta.y), 0, max_vertical)
 
 
 func _make_event_placeholder(event_data: Dictionary) -> Texture2D:
