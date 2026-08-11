@@ -187,17 +187,23 @@ func _build_map_panel() -> Control:
 
 
 func _build_hud_panel() -> Control:
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(342, 0)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.get_v_scroll_bar().modulate = Color(1, 1, 1, 0.24)
+
 	var side := VBoxContainer.new()
-	side.custom_minimum_size = Vector2(342, 0)
-	side.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	side.custom_minimum_size = Vector2(330, 0)
+	side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	side.add_theme_constant_override("separation", 8)
+	scroll.add_child(side)
 
 	side.add_child(_build_status_card())
 	side.add_child(_build_action_card())
 	side.add_child(_build_route_card())
 	side.add_child(_build_battle_card())
 	side.add_child(_build_narration_card())
-	return side
+	return scroll
 
 
 func _build_status_card() -> Control:
