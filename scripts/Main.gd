@@ -122,7 +122,7 @@ func _build_top_bar() -> Control:
 	title_box.add_child(subtitle)
 
 	adult_check = CheckBox.new()
-	adult_check.text = "18+素材"
+	adult_check.text = "敗北18+"
 	adult_check.tooltip_text = "敗北時の成人向け差し替え枠を有効にします。素材はdata/events.jsonで差し替えます。"
 	adult_check.toggled.connect(_on_adult_toggled)
 	header.add_child(adult_check)

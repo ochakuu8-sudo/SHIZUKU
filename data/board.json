@@ -5,7 +5,7 @@
   "spaces": [
     {"id": 0, "x": 0, "y": 5, "type": "start", "label": "START", "description": "旅の始まり。横長のルートマップを進みます。", "next_ids": [1]},
     {"id": 1, "x": 1, "y": 5, "type": "train", "label": "基礎", "stat": "all", "description": "旅立ち前の基礎トレーニング。", "next_ids": [2]},
-    {"id": 2, "x": 2, "y": 5, "type": "event", "label": "出会い", "category": "story", "description": "長い旅の目標が見えてきます。", "next_ids": [3]},
+    {"id": 2, "x": 2, "y": 5, "type": "event", "label": "導入", "category": "story", "description": "長い旅の目標が見えてきます。", "next_ids": [3]},
     {"id": 3, "x": 3, "y": 5, "type": "fork", "label": "三叉路", "description": "街道、中央道、森道から進むルートを選びます。", "next_ids": [10, 20, 30]},
 
     {"id": 10, "x": 4, "y": 3, "type": "event", "label": "街道", "route_label": "街道へ", "category": "daily", "description": "小さな発見が多い安全寄りの道。", "next_ids": [11]},
