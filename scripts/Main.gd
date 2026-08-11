@@ -123,7 +123,7 @@ func _build_top_bar() -> Control:
 
 	adult_check = CheckBox.new()
 	adult_check.text = "18+素材"
-	adult_check.tooltip_text = "成人向けイベント枠を有効にします。素材はdata/events.jsonで差し替えます。"
+	adult_check.tooltip_text = "敗北時の成人向け差し替え枠を有効にします。素材はdata/events.jsonで差し替えます。"
 	adult_check.toggled.connect(_on_adult_toggled)
 	header.add_child(adult_check)
 
@@ -243,7 +243,7 @@ func _build_status_card() -> Control:
 	stats.add_child(_make_stat_chip("str", "筋力", Color("#5572a8")))
 	stats.add_child(_make_stat_chip("charm", "魅力", Color("#8d65b7")))
 	stats.add_child(_make_stat_chip("mind", "知性", Color("#5c95a1")))
-	stats.add_child(_make_stat_chip("bond", "親密", Color("#b88a56")))
+	stats.add_child(_make_stat_chip("resolve", "覚悟", Color("#b88a56")))
 	return panel
 
 
@@ -394,7 +394,7 @@ func _render() -> void:
 	_set_stat_text("str", "筋力", int(stats.get("str", 0)))
 	_set_stat_text("charm", "魅力", int(stats.get("charm", 0)))
 	_set_stat_text("mind", "知性", int(stats.get("mind", 0)))
-	_set_stat_text("bond", "親密", int(stats.get("bond", 0)))
+	_set_stat_text("resolve", "覚悟", int(stats.get("resolve", 0)))
 
 	adult_check.set_pressed_no_signal(bool(p.get("adult_content_enabled", false)))
 	roll_button.disabled = game_state.is_in_battle() or game_state.needs_route_choice() or pending_steps > 0 or bool(p.get("finished", false))

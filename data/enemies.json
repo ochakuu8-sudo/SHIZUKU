@@ -1,7 +1,7 @@
 {
   "enemies": [
-    {"id": "slime", "name": "訓練スライム", "hp": 24, "attack": 6, "reward_gold": 10, "reward_bond": 1},
-    {"id": "wolf", "name": "森の影", "hp": 34, "attack": 8, "reward_gold": 16, "reward_bond": 2},
-    {"id": "rival", "name": "試練のライバル", "hp": 58, "attack": 11, "reward_gold": 40, "reward_bond": 4}
+    {"id": "slime", "name": "訓練スライム", "hp": 24, "attack": 6, "reward_gold": 10, "reward_resolve": 1},
+    {"id": "wolf", "name": "森の影", "hp": 34, "attack": 8, "reward_gold": 16, "reward_resolve": 2},
+    {"id": "rival", "name": "試練のライバル", "hp": 58, "attack": 11, "reward_gold": 40, "reward_resolve": 4}
   ]
 }

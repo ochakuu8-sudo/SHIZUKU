@@ -54,7 +54,10 @@ func _load_json(path: String, fallback: Dictionary) -> Dictionary:
 
 func new_game() -> void:
 	var base: Dictionary = characters_data.get("player", {})
-	var stats: Dictionary = base.get("stats", {"str": 5, "charm": 5, "mind": 5, "bond": 0}).duplicate(true)
+	var stats: Dictionary = base.get("stats", {"str": 5, "charm": 5, "mind": 5, "resolve": 0}).duplicate(true)
+	if stats.has("bond") and not stats.has("resolve"):
+		stats["resolve"] = int(stats.get("bond", 0))
+		stats.erase("bond")
 
 	player = {
 		"name": base.get("name", "主人公"),
@@ -169,7 +172,7 @@ func choose_route(next_id: int) -> void:
 
 func set_adult_content_enabled(enabled: bool) -> void:
 	player["adult_content_enabled"] = enabled
-	add_log("18+素材: %s" % ("有効" if enabled else "無効"))
+	add_log("敗北18+枠: %s" % ("有効" if enabled else "無効"))
 	changed.emit()
 
 
@@ -306,12 +309,12 @@ func _request_event(category: String) -> void:
 		candidates.append(event)
 
 	if candidates.is_empty():
-		if category == "adult":
+		if category == "defeat":
 			event_requested.emit({
-				"id": "adult_disabled",
+				"id": "defeat_disabled",
 				"category": "system",
 				"title": "18+素材は無効です",
-				"body": "成人向けイベント枠に止まりました。設定を有効にすると、この枠であなたの用意した文章と画像を再生できます。",
+				"body": "敗北時の成人向け差し替え枠は無効です。設定を有効にすると、敗北時にあなたの用意した文章と画像を再生できます。",
 				"image_path": "",
 				"adult_only": false,
 				"choices": [{"label": "閉じる", "effects": {"mind": 1}}]
@@ -325,6 +328,27 @@ func _request_event(category: String) -> void:
 		player["gallery"].append(picked.get("id", ""))
 	event_requested.emit(picked.duplicate(true))
 	add_log("イベント: %s" % picked.get("title", "イベント"))
+
+
+func _request_defeat_event(enemy: Dictionary) -> void:
+	var candidates: Array = []
+	for event in events_data.get("events", []):
+		if String(event.get("category", "")) != "defeat":
+			continue
+		if bool(event.get("adult_only", false)) and not bool(player.get("adult_content_enabled", false)):
+			continue
+		candidates.append(event)
+
+	if candidates.is_empty():
+		add_log("敗北イベント候補がありません。")
+		return
+
+	var picked: Dictionary = candidates[rng.randi_range(0, candidates.size() - 1)].duplicate(true)
+	picked["defeated_by"] = enemy.get("id", "")
+	if not player["gallery"].has(picked.get("id", "")):
+		player["gallery"].append(picked.get("id", ""))
+	event_requested.emit(picked)
+	add_log("敗北イベント: %s" % picked.get("title", "敗北"))
 
 
 func apply_choice(choice: Dictionary) -> void:
@@ -432,17 +456,20 @@ func _enemy_turn() -> void:
 	add_log("%s の反撃。%d ダメージ。" % [enemy.get("name", "敵"), damage])
 
 	if int(player.get("hp", 0)) <= 0:
+		var defeated_by := enemy.duplicate(true)
 		player["hp"] = 1
 		player["gold"] = max(0, int(player.get("gold", 0)) - 10)
 		battle.clear()
-		add_log("倒れましたが、拠点に戻って立て直しました。10Gを失いました。")
+		add_log("敗北。10Gを失い、拠点で目を覚ましました。")
+		if bool(player.get("adult_content_enabled", false)):
+			_request_defeat_event(defeated_by)
 
 
 func _win_battle() -> void:
 	var enemy: Dictionary = battle.get("enemy", {})
 	var gold := int(enemy.get("reward_gold", 0))
-	var bond := int(enemy.get("reward_bond", 0))
-	_apply_effects({"gold": gold, "bond": bond})
+	var resolve := int(enemy.get("reward_resolve", 0))
+	_apply_effects({"gold": gold, "resolve": resolve})
 	add_log("%s に勝利。%d G を獲得。" % [enemy.get("name", "敵"), gold])
 	battle.clear()
 	var current_space := get_current_space()
@@ -506,6 +533,11 @@ func load_game() -> void:
 
 
 func _ensure_player_route_fields() -> void:
+	if not player.has("stats"):
+		player["stats"] = {"str": 5, "charm": 5, "mind": 5, "resolve": 0}
+	if player["stats"].has("bond") and not player["stats"].has("resolve"):
+		player["stats"]["resolve"] = int(player["stats"].get("bond", 0))
+		player["stats"].erase("bond")
 	if not player.has("position"):
 		player["position"] = int(board_data.get("start_id", 0))
 	if not player.has("pending_steps"):
@@ -531,7 +563,7 @@ func _stat_label(stat: String) -> String:
 			return "魅力"
 		"mind":
 			return "知性"
-		"bond":
-			return "親密度"
+		"resolve":
+			return "覚悟"
 		_:
 			return stat

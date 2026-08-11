@@ -8,24 +8,24 @@
     {"id": 2, "x": 2, "y": 5, "type": "event", "label": "出会い", "category": "story", "description": "長い旅の目標が見えてきます。", "next_ids": [3]},
     {"id": 3, "x": 3, "y": 5, "type": "fork", "label": "三叉路", "description": "街道、中央道、森道から進むルートを選びます。", "next_ids": [10, 20, 30]},
 
-    {"id": 10, "x": 4, "y": 3, "type": "event", "label": "街道", "route_label": "街道へ", "category": "daily", "description": "会話と小さな発見が多い安全寄りの道。", "next_ids": [11]},
+    {"id": 10, "x": 4, "y": 3, "type": "event", "label": "街道", "route_label": "街道へ", "category": "daily", "description": "小さな発見が多い安全寄りの道。", "next_ids": [11]},
     {"id": 11, "x": 5, "y": 2, "type": "train", "label": "魅力", "stat": "charm", "description": "人目のある道で立ち回りを磨きます。", "next_ids": [12]},
     {"id": 12, "x": 6, "y": 2, "type": "shop", "label": "露店", "description": "道中の露店で少額のゴールドを得ます。", "next_ids": [13]},
-    {"id": 13, "x": 7, "y": 3, "type": "event", "label": "親密", "category": "bond", "description": "ゆっくり話せるタイミング。", "next_ids": [40]},
+    {"id": 13, "x": 7, "y": 3, "type": "event", "label": "覚悟", "category": "resolve", "description": "一人旅の目的を見つめ直すタイミング。", "next_ids": [40]},
 
     {"id": 20, "x": 4, "y": 5, "type": "train", "label": "中央道", "route_label": "中央道へ", "stat": "str", "description": "安定して進みながら筋力を伸ばす道。", "next_ids": [21]},
     {"id": 21, "x": 5, "y": 5, "type": "encounter", "label": "探索", "description": "道中で敵と遭遇します。", "next_ids": [22]},
     {"id": 22, "x": 6, "y": 5, "type": "rest", "label": "野営", "description": "野営してHPとスタミナを回復します。", "next_ids": [23]},
-    {"id": 23, "x": 7, "y": 5, "type": "event", "label": "会話", "category": "daily", "description": "通常イベント。", "next_ids": [40]},
+    {"id": 23, "x": 7, "y": 5, "type": "event", "label": "発見", "category": "daily", "description": "通常イベント。", "next_ids": [40]},
 
     {"id": 30, "x": 4, "y": 7, "type": "encounter", "label": "森道", "route_label": "森道へ", "strong": true, "description": "危険はあるが戦闘経験を得やすい道。", "next_ids": [31]},
     {"id": 31, "x": 5, "y": 8, "type": "rest", "label": "泉", "description": "森の泉で休息します。", "next_ids": [32]},
-    {"id": 32, "x": 6, "y": 8, "type": "event", "label": "成人枠", "category": "adult", "description": "18+コンテンツ差し替え用のイベント枠。", "next_ids": [33]},
+    {"id": 32, "x": 6, "y": 8, "type": "event", "label": "祠", "category": "resolve", "description": "危険な森道で覚悟を固めます。", "next_ids": [33]},
     {"id": 33, "x": 7, "y": 7, "type": "train", "label": "知性", "stat": "mind", "description": "道を読み、判断力を鍛えます。", "next_ids": [40]},
 
     {"id": 40, "x": 9, "y": 5, "type": "fork", "label": "合流", "description": "前半ルートが合流します。峠か川辺を選びます。", "next_ids": [50, 60]},
     {"id": 50, "x": 10, "y": 3, "type": "shop", "label": "峠市", "route_label": "峠へ", "description": "峠の市で準備を整えます。", "next_ids": [51]},
-    {"id": 51, "x": 11, "y": 2, "type": "event", "label": "親密", "category": "bond", "description": "景色を見ながら会話します。", "next_ids": [52]},
+    {"id": 51, "x": 11, "y": 2, "type": "event", "label": "覚悟", "category": "resolve", "description": "景色を見ながら旅の目的を確かめます。", "next_ids": [52]},
     {"id": 52, "x": 12, "y": 3, "type": "train", "label": "魅力", "stat": "charm", "description": "旅先での振る舞いを磨きます。", "next_ids": [70]},
 
     {"id": 60, "x": 10, "y": 7, "type": "encounter", "label": "川辺", "route_label": "川辺へ", "strong": true, "description": "強めの敵が出る遠回りの道。", "next_ids": [61]},
@@ -37,7 +37,7 @@
     {"id": 80, "x": 16, "y": 4, "type": "encounter", "label": "強敵", "route_label": "鍛えて挑む", "strong": true, "description": "強敵と戦い、成果を伸ばしてから試練へ向かいます。", "next_ids": [81]},
     {"id": 81, "x": 17, "y": 4, "type": "shop", "label": "報酬", "description": "戦利品としてゴールドを得ます。", "next_ids": [90]},
     {"id": 85, "x": 16, "y": 6, "type": "rest", "label": "休息", "route_label": "整えて挑む", "description": "体勢を整えてから試練へ向かいます。", "next_ids": [86]},
-    {"id": 86, "x": 17, "y": 6, "type": "event", "label": "会話", "category": "daily", "description": "最後に気持ちを整えるイベント。", "next_ids": [90]},
+    {"id": 86, "x": 17, "y": 6, "type": "event", "label": "準備", "category": "daily", "description": "最後に気持ちを整えるイベント。", "next_ids": [90]},
     {"id": 90, "x": 19, "y": 5, "type": "boss", "label": "試練", "description": "このルートの終点。育成成果を試すボス戦です。", "next_ids": []}
   ]
 }

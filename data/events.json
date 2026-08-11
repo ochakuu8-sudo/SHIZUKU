@@ -8,20 +8,20 @@
       "image_path": "",
       "adult_only": false,
       "choices": [
-        {"label": "会話を楽しむ", "effects": {"bond": 2, "mind": 1}},
+        {"label": "周囲を観察する", "effects": {"resolve": 2, "mind": 1}},
         {"label": "体を動かす", "effects": {"str": 1, "stamina": -1}}
       ]
     },
     {
-      "id": "bond_cafe",
-      "category": "bond",
-      "title": "カフェで休憩",
-      "body": "ゆっくり話す時間ができた。相手の好みを少し理解できた。",
+      "id": "resolve_shrine",
+      "category": "resolve",
+      "title": "古い祠",
+      "body": "道端の祠で息を整える。主人公は一人旅の目的を思い出し、もう一歩先へ進む覚悟を固めた。",
       "image_path": "",
       "adult_only": false,
       "choices": [
-        {"label": "聞き役になる", "effects": {"bond": 4, "mind": 1}},
-        {"label": "冗談を言う", "effects": {"bond": 2, "charm": 2}}
+        {"label": "祈って進む", "effects": {"resolve": 4, "mind": 1}},
+        {"label": "身支度を整える", "effects": {"resolve": 2, "charm": 2}}
       ]
     },
     {
@@ -33,19 +33,19 @@
       "adult_only": false,
       "choices": [
         {"label": "戦闘重視", "effects": {"str": 3, "gold": -5}},
-        {"label": "交流重視", "effects": {"charm": 2, "bond": 3}},
+        {"label": "探索重視", "effects": {"charm": 2, "resolve": 3}},
         {"label": "堅実に進める", "effects": {"mind": 2, "hp": 10}}
       ]
     },
     {
-      "id": "adult_slot_01",
-      "category": "adult",
-      "title": "18+イベント枠 01",
-      "body": "ここにあなたが用意した成人向け文章を差し替えます。登場人物は全員成人である設定にしてください。",
+      "id": "defeat_slot_01",
+      "category": "defeat",
+      "title": "敗北イベント枠 01",
+      "body": "ここにあなたが用意した成人向け敗北演出を差し替えます。主人公は成人女性として設定してください。現在は非表示用の仮テキストです。",
       "image_path": "",
       "adult_only": true,
       "choices": [
-        {"label": "イベントを見たことにする", "effects": {"bond": 6, "charm": 1}},
+        {"label": "記録して拠点へ戻る", "effects": {"resolve": 2, "mind": 1}},
         {"label": "今回はスキップ", "effects": {"mind": 1}}
       ]
     }

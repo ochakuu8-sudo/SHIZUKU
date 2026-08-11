@@ -32,14 +32,14 @@
 
 イベント本文、画像、選択肢、効果を定義します。
 
-`adult_only: true` のイベントは、ゲーム画面右上の `18+素材` が有効な時だけ抽選されます。
+`adult_only: true` のイベントは、ゲーム画面右上の `18+素材` が有効な時だけ抽選されます。現在の前提では、成人向け素材はマップ上の通常マスではなく、敗北時の `defeat` カテゴリで再生します。
 
 使える `effects`:
 
 - `str`: 筋力
 - `charm`: 魅力
 - `mind`: 知性
-- `bond`: 親密度
+- `resolve`: 覚悟
 - `hp`: HP
 - `stamina`: スタミナ
 - `gold`: ゴールド
@@ -48,12 +48,12 @@
 
 ## `data/enemies.json`
 
-戦闘相手を定義します。
+敵データを定義します。
 
 - `hp`: 敵HP
 - `attack`: 敵攻撃力
 - `reward_gold`: 勝利時ゴールド
-- `reward_bond`: 勝利時親密度
+- `reward_resolve`: 勝利時覚悟
 
 ## `data/characters.json`
 
