@@ -131,6 +131,8 @@ func _build_ui() -> void:
 	board_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	board_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	board_scroll.follow_focus = false
+	board_scroll.get_h_scroll_bar().modulate = Color(1, 1, 1, 0.28)
+	board_scroll.get_v_scroll_bar().modulate = Color(1, 1, 1, 0.28)
 	board_margin.add_child(board_scroll)
 
 	board_map = BOARD_MAP_SCRIPT.new()
