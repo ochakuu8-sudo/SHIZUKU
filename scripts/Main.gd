@@ -31,6 +31,7 @@ var battle_body: Label
 var route_panel: PanelContainer
 var route_status: Label
 var route_box: VBoxContainer
+var orientation_overlay: PanelContainer
 var roll_button: Button
 var adult_check: CheckBox
 var game_state
@@ -42,7 +43,13 @@ func _ready() -> void:
 	game_state.event_requested.connect(_show_event)
 	_apply_ui_theme()
 	_build_ui()
+	_update_orientation_overlay()
 	_render()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED and orientation_overlay != null:
+		_update_orientation_overlay()
 
 
 func _apply_ui_theme() -> void:
@@ -294,6 +301,8 @@ func _build_ui() -> void:
 	log_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	side.add_child(_wrap_panel(log_label, Color("#202632"), Vector2(0, 160)))
 
+	_build_orientation_overlay()
+
 
 func _render() -> void:
 	var p: Dictionary = game_state.player
@@ -383,6 +392,43 @@ func _render_route_choices() -> void:
 		else:
 			button.pressed.connect(func() -> void: game_state.choose_route(next_id))
 		route_box.add_child(button)
+
+
+func _build_orientation_overlay() -> void:
+	orientation_overlay = PanelContainer.new()
+	orientation_overlay.visible = false
+	orientation_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	orientation_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	orientation_overlay.add_theme_stylebox_override("panel", _panel_style(Color("#171a21")))
+	add_child(orientation_overlay)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	orientation_overlay.add_child(center)
+
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = Vector2(360, 0)
+	box.add_theme_constant_override("separation", 12)
+	center.add_child(box)
+
+	var title := Label.new()
+	title.text = "横向きにしてください"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	box.add_child(title)
+
+	var body := Label.new()
+	body.text = "スマホを横持ちにするとプレイできます。"
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(body)
+
+
+func _update_orientation_overlay() -> void:
+	var viewport_size := get_viewport_rect().size
+	orientation_overlay.visible = viewport_size.y > viewport_size.x
+	if orientation_overlay.visible:
+		orientation_overlay.move_to_front()
 
 
 func _show_event(event_data: Dictionary) -> void:

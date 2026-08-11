@@ -5,6 +5,7 @@
 ## Web版
 
 `main` ブランチにpushすると、GitHub ActionsがWeb exportを作り、`gh-pages` ブランチへ配置します。
+スマホでは横持ちでのプレイを前提にしています。Web export の PWA orientation は Landscape に設定し、縦向き表示時はゲーム内に横向き案内を出します。
 
 公開URLの想定:
 
