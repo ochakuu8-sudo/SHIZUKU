@@ -20,6 +20,9 @@ const SPACE_COLORS := {
 var board_buttons: Array[Button] = []
 var board_map
 var board_scroll: ScrollContainer
+var main_layout: GridContainer
+var map_panel: PanelContainer
+var hud_panel: VBoxContainer
 var last_centered_position := -1
 var map_dragging := false
 
@@ -33,6 +36,7 @@ var stat_labels: Dictionary = {}
 var narration_label: RichTextLabel
 
 var event_overlay: PanelContainer
+var event_dialog: PanelContainer
 var event_title: Label
 var event_body: RichTextLabel
 var event_image: TextureRect
@@ -59,13 +63,13 @@ func _ready() -> void:
 	game_state.event_requested.connect(_show_event)
 	_apply_ui_theme()
 	_build_ui()
-	_update_orientation_overlay()
+	_apply_responsive_layout()
 	_render()
 
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_RESIZED and orientation_overlay != null:
-		_update_orientation_overlay()
+	if what == NOTIFICATION_RESIZED and main_layout != null:
+		_apply_responsive_layout()
 
 
 func _apply_ui_theme() -> void:
@@ -95,13 +99,16 @@ func _build_ui() -> void:
 
 	root.add_child(_build_top_bar())
 
-	var main_row := HBoxContainer.new()
-	main_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	main_row.add_theme_constant_override("separation", 12)
-	root.add_child(main_row)
+	main_layout = GridContainer.new()
+	main_layout.columns = 2
+	main_layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	main_layout.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	main_layout.add_theme_constant_override("h_separation", 12)
+	main_layout.add_theme_constant_override("v_separation", 8)
+	root.add_child(main_layout)
 
-	main_row.add_child(_build_map_panel())
-	main_row.add_child(_build_hud_panel())
+	main_layout.add_child(_build_map_panel())
+	main_layout.add_child(_build_hud_panel())
 
 	_build_event_overlay()
 	_build_orientation_overlay()
@@ -109,7 +116,7 @@ func _build_ui() -> void:
 
 func _build_top_bar() -> Control:
 	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 10)
+	header.add_theme_constant_override("separation", 8)
 
 	var title_box := VBoxContainer.new()
 	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -154,17 +161,17 @@ func _build_top_bar() -> Control:
 
 
 func _build_map_panel() -> Control:
-	var board_panel := PanelContainer.new()
-	board_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	board_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	board_panel.add_theme_stylebox_override("panel", _panel_style(Color("#161d28"), Color("#344052"), 1, 10))
+	map_panel = PanelContainer.new()
+	map_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	map_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	map_panel.add_theme_stylebox_override("panel", _panel_style(Color("#161d28"), Color("#344052"), 1, 10))
 
 	var board_margin := MarginContainer.new()
 	board_margin.add_theme_constant_override("margin_left", 12)
 	board_margin.add_theme_constant_override("margin_top", 12)
 	board_margin.add_theme_constant_override("margin_right", 12)
 	board_margin.add_theme_constant_override("margin_bottom", 12)
-	board_panel.add_child(board_margin)
+	map_panel.add_child(board_margin)
 
 	board_scroll = ScrollContainer.new()
 	board_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -189,21 +196,21 @@ func _build_map_panel() -> Control:
 		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		board_map.add_child(button)
 		board_buttons.append(button)
-	return board_panel
+	return map_panel
 
 
 func _build_hud_panel() -> Control:
-	var side := VBoxContainer.new()
-	side.custom_minimum_size = Vector2(342, 0)
-	side.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	side.add_theme_constant_override("separation", 8)
+	hud_panel = VBoxContainer.new()
+	hud_panel.custom_minimum_size = Vector2(342, 0)
+	hud_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	hud_panel.add_theme_constant_override("separation", 8)
 
-	side.add_child(_build_status_card())
-	side.add_child(_build_action_card())
-	side.add_child(_build_route_card())
-	side.add_child(_build_battle_card())
-	side.add_child(_build_narration_card())
-	return side
+	hud_panel.add_child(_build_status_card())
+	hud_panel.add_child(_build_action_card())
+	hud_panel.add_child(_build_route_card())
+	hud_panel.add_child(_build_battle_card())
+	hud_panel.add_child(_build_narration_card())
+	return hud_panel
 
 
 func _build_status_card() -> Control:
@@ -483,12 +490,12 @@ func _build_event_overlay() -> void:
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	event_overlay.add_child(center)
 
-	var dialog := PanelContainer.new()
-	dialog.custom_minimum_size = Vector2(560, 0)
-	dialog.add_theme_stylebox_override("panel", _panel_style(Color("#202536"), Color("#59657b"), 1, 12))
-	center.add_child(dialog)
+	event_dialog = PanelContainer.new()
+	event_dialog.custom_minimum_size = Vector2(560, 0)
+	event_dialog.add_theme_stylebox_override("panel", _panel_style(Color("#202536"), Color("#59657b"), 1, 12))
+	center.add_child(event_dialog)
 
-	var margin := _panel_margin(dialog, 16)
+	var margin := _panel_margin(event_dialog, 16)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
 	margin.add_child(box)
@@ -578,11 +585,20 @@ func _build_orientation_overlay() -> void:
 	box.add_child(body)
 
 
-func _update_orientation_overlay() -> void:
+func _apply_responsive_layout() -> void:
 	var viewport_size := get_viewport_rect().size
-	orientation_overlay.visible = viewport_size.y > viewport_size.x
-	if orientation_overlay.visible:
-		orientation_overlay.move_to_front()
+	var portrait := viewport_size.y > viewport_size.x
+	main_layout.columns = 1 if portrait else 2
+	map_panel.custom_minimum_size = Vector2(0, 390) if portrait else Vector2.ZERO
+	map_panel.size_flags_vertical = Control.SIZE_FILL if portrait else Control.SIZE_EXPAND_FILL
+	hud_panel.custom_minimum_size = Vector2(0, 0) if portrait else Vector2(342, 0)
+	hud_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hud_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	event_dialog.custom_minimum_size = Vector2(minf(560.0, maxf(320.0, viewport_size.x - 34.0)), 0)
+	event_image.custom_minimum_size = Vector2(0, 150 if portrait else 190)
+	orientation_overlay.visible = false
+	last_centered_position = -1
+	_center_current_space(int(game_state.player.get("position", 0)))
 
 
 func _hide_event() -> void:
@@ -748,7 +764,7 @@ func _make_map_node_button(space: Dictionary) -> Button:
 
 func _make_utility_button(text: String) -> Button:
 	var button := _make_button(text, Color("#303847"))
-	button.custom_minimum_size = Vector2(84, 34)
+	button.custom_minimum_size = Vector2(64, 34)
 	button.size_flags_horizontal = Control.SIZE_SHRINK_END
 	return button
 
