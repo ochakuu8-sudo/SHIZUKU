@@ -1,8 +1,8 @@
 extends Control
 
-const NODE_SIZE := Vector2(96, 58)
-const NODE_SPACING := Vector2(126, 88)
-const MAP_PADDING := Vector2(56, 42)
+const NODE_SIZE := Vector2(104, 62)
+const NODE_SPACING := Vector2(134, 90)
+const MAP_PADDING := Vector2(72, 58)
 
 var board_data: Dictionary = {}
 var current_space_id := -1
@@ -43,26 +43,46 @@ func set_focus_state(space_id: int, option_ids: Array) -> void:
 
 
 func _draw() -> void:
-	var map_rect := Rect2(Vector2.ZERO, get_map_size())
-	draw_rect(map_rect, Color("#171b24"))
+	var map_size := get_map_size()
+	draw_rect(Rect2(Vector2.ZERO, map_size), Color("#141923"))
+	draw_rect(Rect2(Vector2(18, 18), map_size - Vector2(36, 36)), Color("#181f2b"))
+
+	for i in range(90):
+		var x := fposmod(float(i * 211), map_size.x - 120.0) + 60.0
+		var y := fposmod(float(i * 97), map_size.y - 100.0) + 50.0
+		var radius := 1.0 + float(i % 3) * 0.45
+		draw_circle(Vector2(x, y), radius, Color(1, 1, 1, 0.035))
+
+	for y in range(1, int(board_data.get("height", 1))):
+		var line_y := MAP_PADDING.y + float(y) * NODE_SPACING.y + NODE_SIZE.y * 0.5
+		draw_line(Vector2(34, line_y), Vector2(map_size.x - 34, line_y), Color(1, 1, 1, 0.018), 1.0)
+
+	draw_string(get_theme_default_font(), Vector2(32, 36), "ROUTE MAP", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.18))
 
 	for space in _get_spaces():
 		var from_space: Dictionary = space
 		for next_id in _get_next_ids(from_space):
-			var to_space := _get_space_by_id(next_id)
+			var to_space: Dictionary = _get_space_by_id(next_id)
 			if to_space.is_empty():
 				continue
 			var from_center := get_space_center(from_space)
 			var to_center := get_space_center(to_space)
 			var is_active := int(from_space.get("id", -1)) == current_space_id or route_option_ids.has(int(to_space.get("id", -1)))
-			draw_line(from_center, to_center, Color("#11141b"), 14.0, true)
-			draw_line(from_center, to_center, Color("#5c6577") if is_active else Color("#303846"), 6.0, true)
+			draw_line(from_center + Vector2(0, 5), to_center + Vector2(0, 5), Color("#080b11"), 18.0, true)
+			draw_line(from_center, to_center, Color("#384253") if is_active else Color("#252e3d"), 9.0, true)
+			draw_line(from_center, to_center, Color("#f2ca69") if is_active else Color("#566173"), 3.0, true)
 			if is_active:
-				draw_line(from_center, to_center, Color("#f0c766"), 2.0, true)
+				draw_line(from_center, to_center, Color(1.0, 0.88, 0.42, 0.35), 13.0, true)
+
+	var current_space := _get_space_by_id(current_space_id)
+	if not current_space.is_empty():
+		var center := get_space_center(current_space)
+		draw_circle(center, 42.0, Color(1.0, 0.78, 0.25, 0.10))
+		draw_circle(center, 26.0, Color(1.0, 0.78, 0.25, 0.16))
 
 	var start_space := _get_space_by_id(int(board_data.get("start_id", 0)))
 	if not start_space.is_empty():
-		draw_circle(get_space_center(start_space), 9.0, Color("#f0c766"))
+		draw_circle(get_space_center(start_space), 8.0, Color("#f2ca69"))
 
 
 func _get_spaces() -> Array:
