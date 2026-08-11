@@ -61,6 +61,9 @@ func new_game() -> void:
 		"day": 1,
 		"turn": 0,
 		"position": 0,
+		"pending_steps": 0,
+		"selected_next_id": -1,
+		"finished": false,
 		"hp": int(base.get("max_hp", 100)),
 		"max_hp": int(base.get("max_hp", 100)),
 		"stamina": int(base.get("max_stamina", 10)),
@@ -71,10 +74,11 @@ func new_game() -> void:
 		"gallery": [],
 		"flags": {}
 	}
+	player["position"] = int(board_data.get("start_id", 0))
 	battle.clear()
 	last_roll = 0
 	logs.clear()
-	add_log("新しい育成を開始しました。")
+	add_log("新しいルート攻略を開始しました。")
 	changed.emit()
 
 
@@ -97,11 +101,70 @@ func get_space_at_cell(x: int, y: int) -> Dictionary:
 	return {}
 
 
+func get_space_by_id(space_id: int) -> Dictionary:
+	for space in get_spaces():
+		if int(space.get("id", -1)) == space_id:
+			return space
+	return {}
+
+
 func get_current_space() -> Dictionary:
 	var spaces := get_spaces()
 	if spaces.is_empty():
 		return {}
-	return spaces[int(player.get("position", 0)) % spaces.size()]
+	var current_space := get_space_by_id(int(player.get("position", board_data.get("start_id", 0))))
+	if current_space.is_empty():
+		return spaces[0]
+	return current_space
+
+
+func get_next_ids(space: Dictionary) -> Array:
+	var ids: Array = []
+	if space.has("next_ids"):
+		for raw_id in space.get("next_ids", []):
+			ids.append(int(raw_id))
+	elif space.has("next_id"):
+		ids.append(int(space.get("next_id", -1)))
+	return ids
+
+
+func get_route_options() -> Array:
+	if player.is_empty() or is_in_battle() or bool(player.get("finished", false)):
+		return []
+
+	var next_ids := get_next_ids(get_current_space())
+	if next_ids.size() <= 1:
+		return []
+
+	var options: Array = []
+	for next_id in next_ids:
+		var space := get_space_by_id(int(next_id))
+		if not space.is_empty():
+			options.append(space)
+	return options
+
+
+func needs_route_choice() -> bool:
+	var next_ids := get_next_ids(get_current_space())
+	return next_ids.size() > 1 and not next_ids.has(int(player.get("selected_next_id", -1)))
+
+
+func choose_route(next_id: int) -> void:
+	if is_in_battle():
+		add_log("戦闘中はルートを選べません。")
+		return
+
+	var next_ids := get_next_ids(get_current_space())
+	if not next_ids.has(next_id):
+		add_log("そのルートには進めません。")
+		changed.emit()
+		return
+
+	player["selected_next_id"] = next_id
+	var next_space := get_space_by_id(next_id)
+	add_log("ルート選択: %s" % next_space.get("route_label", next_space.get("label", "次の道")))
+	_advance_pending_steps()
+	changed.emit()
 
 
 func set_adult_content_enabled(enabled: bool) -> void:
@@ -115,24 +178,25 @@ func roll_dice() -> void:
 		add_log("戦闘中はサイコロを振れません。")
 		return
 
-	var spaces := get_spaces()
-	if spaces.is_empty():
+	if bool(player.get("finished", false)):
+		add_log("このルートは踏破済みです。Newで最初から始められます。")
+		changed.emit()
+		return
+
+	if get_spaces().is_empty():
 		add_log("盤面データが空です。")
 		return
 
-	last_roll = rng.randi_range(1, 6)
-	var old_position := int(player.get("position", 0))
-	var new_position := old_position
-	for _i in range(last_roll):
-		new_position += 1
-		if new_position >= spaces.size():
-			new_position = 0
-			_pass_start()
+	if needs_route_choice():
+		add_log("先に進むルートを選んでください。")
+		changed.emit()
+		return
 
-	player["position"] = new_position
+	last_roll = rng.randi_range(1, 6)
+	player["pending_steps"] = last_roll
 	player["turn"] = int(player.get("turn", 0)) + 1
-	add_log("サイコロ: %d / %s に移動。" % [last_roll, get_current_space().get("label", "マス")])
-	_resolve_space(get_current_space())
+	add_log("サイコロ: %d" % last_roll)
+	_advance_pending_steps()
 	changed.emit()
 
 
@@ -153,10 +217,43 @@ func rest() -> void:
 	changed.emit()
 
 
-func _pass_start() -> void:
-	player["day"] = int(player.get("day", 1)) + 1
-	_heal(10, 2)
-	add_log("STARTを通過。Day %d になりました。" % int(player.get("day", 1)))
+func _advance_pending_steps() -> void:
+	var moved := false
+	while int(player.get("pending_steps", 0)) > 0:
+		var current_space := get_current_space()
+		var next_ids := get_next_ids(current_space)
+		if next_ids.is_empty():
+			player["pending_steps"] = 0
+			if String(current_space.get("type", "")) == "boss":
+				add_log("試練の場に到着しました。")
+			else:
+				player["finished"] = true
+				add_log("ルートの終点に到着しました。")
+			break
+
+		var next_id := -1
+		if next_ids.size() > 1:
+			var selected_id := int(player.get("selected_next_id", -1))
+			if not next_ids.has(selected_id):
+				add_log("分岐点です。進むルートを選んでください。")
+				break
+			next_id = selected_id
+			player["selected_next_id"] = -1
+		else:
+			next_id = int(next_ids[0])
+
+		player["position"] = next_id
+		player["pending_steps"] = maxi(0, int(player.get("pending_steps", 0)) - 1)
+		moved = true
+
+		var arrived_space := get_current_space()
+		add_log("%s に進みました。" % arrived_space.get("label", "マス"))
+		if int(player.get("pending_steps", 0)) > 0 and get_next_ids(arrived_space).size() > 1:
+			add_log("分岐点です。進むルートを選んでください。")
+			break
+
+	if moved and int(player.get("pending_steps", 0)) == 0:
+		_resolve_space(get_current_space())
 
 
 func _resolve_space(space: Dictionary) -> void:
@@ -164,12 +261,14 @@ func _resolve_space(space: Dictionary) -> void:
 		"start":
 			_heal(6, 1)
 			add_log("拠点で少し回復しました。")
+		"fork":
+			add_log("%sに到着。次のルートを選べます。" % space.get("label", "分岐"))
 		"train":
 			_train_stat(String(space.get("stat", "str")), 2, 2)
 		"event":
 			_request_event(String(space.get("category", "daily")))
 		"encounter":
-			start_encounter(false)
+			start_encounter(bool(space.get("strong", false)))
 		"rest":
 			_heal(18, 4)
 			add_log("%sで休みました。" % space.get("label", "休息"))
@@ -346,6 +445,10 @@ func _win_battle() -> void:
 	_apply_effects({"gold": gold, "bond": bond})
 	add_log("%s に勝利。%d G を獲得。" % [enemy.get("name", "敵"), gold])
 	battle.clear()
+	var current_space := get_current_space()
+	if String(current_space.get("type", "")) == "boss" and get_next_ids(current_space).is_empty():
+		player["finished"] = true
+		add_log("ルートを踏破しました。")
 
 
 func _heal(hp_amount: int, stamina_amount: int) -> void:
@@ -394,11 +497,23 @@ func load_game() -> void:
 	var parsed = JSON.parse_string(file.get_as_text())
 	if typeof(parsed) == TYPE_DICTIONARY and parsed.has("player"):
 		player = parsed["player"]
+		_ensure_player_route_fields()
 		battle.clear()
 		add_log("ロードしました。")
 	else:
 		add_log("セーブデータを読めませんでした。")
 	changed.emit()
+
+
+func _ensure_player_route_fields() -> void:
+	if not player.has("position"):
+		player["position"] = int(board_data.get("start_id", 0))
+	if not player.has("pending_steps"):
+		player["pending_steps"] = 0
+	if not player.has("selected_next_id"):
+		player["selected_next_id"] = -1
+	if not player.has("finished"):
+		player["finished"] = false
 
 
 func add_log(text: String) -> void:

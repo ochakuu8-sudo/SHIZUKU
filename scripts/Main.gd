@@ -4,12 +4,14 @@ const UI_FONT := preload("res://assets/fonts/NotoSansCJKjp-Regular.otf")
 
 const SPACE_COLORS := {
 	"start": Color("#3d7a59"),
+	"fork": Color("#6d6675"),
 	"train": Color("#4b638f"),
 	"event": Color("#8662a8"),
 	"encounter": Color("#9a4f4f"),
 	"rest": Color("#4d7d8b"),
 	"shop": Color("#8a7148"),
 	"boss": Color("#a84e78"),
+	"goal": Color("#b8944f"),
 	"empty": Color("#252a34")
 }
 
@@ -24,6 +26,9 @@ var choice_box: VBoxContainer
 var battle_panel: PanelContainer
 var battle_title: Label
 var battle_body: Label
+var route_panel: PanelContainer
+var route_status: Label
+var route_box: VBoxContainer
 var roll_button: Button
 var adult_check: CheckBox
 var game_state
@@ -68,7 +73,7 @@ func _build_ui() -> void:
 	root.add_child(header)
 
 	var title := Label.new()
-	title.text = "すごろく育成RPG"
+	title.text = "ルート分岐育成RPG"
 	title.add_theme_font_size_override("font_size", 24)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
@@ -167,6 +172,34 @@ func _build_ui() -> void:
 	mind_button.pressed.connect(func() -> void: game_state.manual_train("mind"))
 	train_row.add_child(mind_button)
 
+	route_panel = PanelContainer.new()
+	route_panel.add_theme_stylebox_override("panel", _panel_style(Color("#20292f")))
+	side.add_child(route_panel)
+
+	var route_margin := MarginContainer.new()
+	route_margin.add_theme_constant_override("margin_left", 10)
+	route_margin.add_theme_constant_override("margin_top", 10)
+	route_margin.add_theme_constant_override("margin_right", 10)
+	route_margin.add_theme_constant_override("margin_bottom", 10)
+	route_panel.add_child(route_margin)
+
+	var route_inner := VBoxContainer.new()
+	route_inner.add_theme_constant_override("separation", 8)
+	route_margin.add_child(route_inner)
+
+	var route_title := Label.new()
+	route_title.text = "ルート選択"
+	route_title.add_theme_font_size_override("font_size", 18)
+	route_inner.add_child(route_title)
+
+	route_status = Label.new()
+	route_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	route_inner.add_child(route_status)
+
+	route_box = VBoxContainer.new()
+	route_box.add_theme_constant_override("separation", 6)
+	route_inner.add_child(route_box)
+
 	battle_panel = PanelContainer.new()
 	battle_panel.add_theme_stylebox_override("panel", _panel_style(Color("#2b2025")))
 	side.add_child(battle_panel)
@@ -256,10 +289,11 @@ func _build_ui() -> void:
 func _render() -> void:
 	var p: Dictionary = game_state.player
 	var stats: Dictionary = p.get("stats", {})
-	stats_label.text = "%s / Day %d / Turn %d\nHP %d/%d  ST %d/%d  Gold %dG\n筋力 %d  魅力 %d  知性 %d  親密度 %d" % [
+	var progress_text := "クリア済み" if bool(p.get("finished", false)) else "残り歩数 %d" % int(p.get("pending_steps", 0))
+	stats_label.text = "%s / Turn %d / %s\nHP %d/%d  ST %d/%d  Gold %dG\n筋力 %d  魅力 %d  知性 %d  親密度 %d" % [
 		p.get("name", "主人公"),
-		int(p.get("day", 1)),
 		int(p.get("turn", 0)),
+		progress_text,
 		int(p.get("hp", 0)),
 		int(p.get("max_hp", 0)),
 		int(p.get("stamina", 0)),
@@ -272,7 +306,7 @@ func _render() -> void:
 	]
 
 	adult_check.set_pressed_no_signal(bool(p.get("adult_content_enabled", false)))
-	roll_button.disabled = game_state.is_in_battle()
+	roll_button.disabled = game_state.is_in_battle() or game_state.needs_route_choice() or int(p.get("pending_steps", 0)) > 0 or bool(p.get("finished", false))
 
 	var position := int(p.get("position", 0))
 	var width: int = game_state.get_board_width()
@@ -310,7 +344,36 @@ func _render() -> void:
 	else:
 		battle_panel.visible = false
 
+	_render_route_choices()
 	log_label.text = "\n".join(game_state.logs)
+
+
+func _render_route_choices() -> void:
+	_clear_children(route_box)
+	var options: Array = game_state.get_route_options()
+	route_panel.visible = options.size() > 0 and not game_state.is_in_battle()
+	if not route_panel.visible:
+		return
+
+	var pending_steps := int(game_state.player.get("pending_steps", 0))
+	if pending_steps > 0:
+		route_status.text = "残り%d歩。進む先を選んでください。" % pending_steps
+	else:
+		route_status.text = "次のサイコロで進むルートを選べます。"
+
+	var selected_id := int(game_state.player.get("selected_next_id", -1))
+	for raw_option in options:
+		var option: Dictionary = raw_option
+		var next_id := int(option.get("id", -1))
+		var label := String(option.get("route_label", option.get("label", "ルート")))
+		var button := _make_button(label, Color("#4b638f"))
+		button.tooltip_text = String(option.get("description", ""))
+		if next_id == selected_id:
+			button.text = "選択中: %s" % label
+			button.disabled = true
+		else:
+			button.pressed.connect(func() -> void: game_state.choose_route(next_id))
+		route_box.add_child(button)
 
 
 func _show_event(event_data: Dictionary) -> void:
@@ -415,5 +478,6 @@ func _button_style(color: Color, highlighted: bool) -> StyleBoxFlat:
 
 func _clear_children(node: Node) -> void:
 	for child in node.get_children():
+		node.remove_child(child)
 		child.queue_free()
 
