@@ -264,25 +264,33 @@ func _resolve_space(space: Dictionary) -> void:
 		"start":
 			_heal(6, 1)
 			add_log("拠点で少し回復しました。")
+			_request_space_scene(space, "拠点", "拠点で短く息を整えました。次の一歩へ向けて、HPとスタミナが少し回復します。")
 		"fork":
 			add_log("%sに到着。次のルートを選べます。" % space.get("label", "分岐"))
+			_request_space_scene(space, "分岐点", "%s。ここから先のルートを選べます。" % String(space.get("description", "道が複数に分かれています。")))
 		"train":
 			_train_stat(String(space.get("stat", "str")), 2, 2)
+			_request_space_scene(space, "%sの鍛錬" % String(space.get("label", "鍛錬")), String(space.get("description", "主人公は旅の途中で能力を鍛えました。")))
 		"event":
 			_request_event(String(space.get("category", "daily")))
 		"encounter":
+			_request_space_scene(space, "%s" % String(space.get("label", "遭遇")), String(space.get("description", "道中で敵の気配が近づいてきます。")))
 			start_encounter(bool(space.get("strong", false)))
 		"rest":
 			_heal(18, 4)
 			add_log("%sで休みました。" % space.get("label", "休息"))
+			_request_space_scene(space, "%sで休息" % String(space.get("label", "休息")), String(space.get("description", "主人公は体勢を立て直しました。")))
 		"shop":
 			var reward := rng.randi_range(8, 18)
 			_apply_effects({"gold": reward})
 			add_log("報酬として %d G を得ました。" % reward)
+			_request_space_scene(space, "%s" % String(space.get("label", "報酬")), "%s\n%d G を得ました。" % [String(space.get("description", "旅の助けになるものを手に入れました。")), reward])
 		"boss":
+			_request_space_scene(space, "%s" % String(space.get("label", "試練")), String(space.get("description", "ルートの終点で大きな試練が始まります。")))
 			start_boss()
 		_:
 			add_log("何も起きませんでした。")
+			_request_space_scene(space, String(space.get("label", "イベント")), String(space.get("description", "静かな時間が流れました。")))
 
 
 func _train_stat(stat: String, amount: int, stamina_cost: int) -> void:
@@ -323,11 +331,25 @@ func _request_event(category: String) -> void:
 			add_log("イベント候補がありません。")
 		return
 
-	var picked: Dictionary = candidates[rng.randi_range(0, candidates.size() - 1)]
+	var picked: Dictionary = candidates[rng.randi_range(0, candidates.size() - 1)].duplicate(true)
+	picked["space_type"] = "event"
 	if not player["gallery"].has(picked.get("id", "")):
 		player["gallery"].append(picked.get("id", ""))
-	event_requested.emit(picked.duplicate(true))
+	event_requested.emit(picked)
 	add_log("イベント: %s" % picked.get("title", "イベント"))
+
+
+func _request_space_scene(space: Dictionary, title: String, body: String) -> void:
+	event_requested.emit({
+		"id": "space_%s" % str(space.get("id", "unknown")),
+		"category": str(space.get("category", space.get("type", "space"))),
+		"space_type": str(space.get("type", "space")),
+		"title": title,
+		"body": body,
+		"image_path": str(space.get("image_path", "")),
+		"adult_only": false,
+		"choices": []
+	})
 
 
 func _request_defeat_event(enemy: Dictionary) -> void:
@@ -345,6 +367,7 @@ func _request_defeat_event(enemy: Dictionary) -> void:
 
 	var picked: Dictionary = candidates[rng.randi_range(0, candidates.size() - 1)].duplicate(true)
 	picked["defeated_by"] = enemy.get("id", "")
+	picked["space_type"] = "defeat"
 	if not player["gallery"].has(picked.get("id", "")):
 		player["gallery"].append(picked.get("id", ""))
 	event_requested.emit(picked)

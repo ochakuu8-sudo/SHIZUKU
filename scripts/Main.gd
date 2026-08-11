@@ -13,6 +13,7 @@ const SPACE_COLORS := {
 	"rest": Color("#5c95a1"),
 	"shop": Color("#a9864e"),
 	"boss": Color("#bd5b83"),
+	"defeat": Color("#7d334c"),
 	"empty": Color("#252a34")
 }
 
@@ -35,6 +36,7 @@ var event_title: Label
 var event_body: RichTextLabel
 var event_image: TextureRect
 var choice_box: VBoxContainer
+var event_placeholder_cache: Dictionary = {}
 
 var battle_panel: PanelContainer
 var battle_title: Label
@@ -488,7 +490,7 @@ func _build_event_overlay() -> void:
 	box.add_child(event_title)
 
 	event_image = TextureRect.new()
-	event_image.custom_minimum_size = Vector2(0, 150)
+	event_image.custom_minimum_size = Vector2(0, 190)
 	event_image.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 	event_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	box.add_child(event_image)
@@ -518,8 +520,8 @@ func _show_event(event_data: Dictionary) -> void:
 		event_image.texture = load(image_path)
 		event_image.visible = true
 	else:
-		event_image.texture = null
-		event_image.visible = false
+		event_image.texture = _make_event_placeholder(event_data)
+		event_image.visible = true
 
 	var choices: Array = event_data.get("choices", [])
 	if choices.is_empty():
@@ -577,6 +579,47 @@ func _update_orientation_overlay() -> void:
 
 func _hide_event() -> void:
 	event_overlay.visible = false
+
+
+func _make_event_placeholder(event_data: Dictionary) -> Texture2D:
+	var key := String(event_data.get("space_type", event_data.get("category", "event")))
+	if event_placeholder_cache.has(key):
+		return event_placeholder_cache[key]
+
+	var base: Color = SPACE_COLORS.get(key, SPACE_COLORS.get("event", Color("#8d65b7")))
+	var image := Image.create(960, 360, false, Image.FORMAT_RGBA8)
+	for y in range(image.get_height()):
+		var vertical_t := float(y) / float(image.get_height() - 1)
+		for x in range(image.get_width()):
+			var horizontal_t := float(x) / float(image.get_width() - 1)
+			var glow: float = maxf(0.0, 1.0 - Vector2(horizontal_t - 0.36, vertical_t - 0.42).length() * 2.4)
+			var color: Color = Color("#10141c").lerp(base.darkened(0.12), 0.42 + glow * 0.34)
+			color = color.lerp(Color("#f2d06b"), maxf(0.0, 0.16 - absf(vertical_t - 0.72)) * 0.42)
+			image.set_pixel(x, y, color)
+
+	var seed: int = absi(hash(key))
+	for i in range(18):
+		var cx := 52 + int((seed + i * 127) % 860)
+		var cy := 42 + int((seed / maxi(1, i + 1) + i * 67) % 260)
+		var radius := 2 + int((seed + i * 13) % 5)
+		_draw_placeholder_diamond(image, Vector2i(cx, cy), radius, base.lightened(0.34))
+
+	var texture: ImageTexture = ImageTexture.create_from_image(image)
+	event_placeholder_cache[key] = texture
+	return texture
+
+
+func _draw_placeholder_diamond(image: Image, center: Vector2i, radius: int, color: Color) -> void:
+	for y in range(center.y - radius, center.y + radius + 1):
+		if y < 0 or y >= image.get_height():
+			continue
+		for x in range(center.x - radius, center.x + radius + 1):
+			if x < 0 or x >= image.get_width():
+				continue
+			var distance: int = absi(x - center.x) + absi(y - center.y)
+			if distance <= radius:
+				var alpha: float = 0.18 * (1.0 - float(distance) / float(radius + 1))
+				image.set_pixel(x, y, image.get_pixel(x, y).lerp(color, alpha))
 
 
 func _on_adult_toggled(enabled: bool) -> void:
