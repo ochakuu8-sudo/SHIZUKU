@@ -1,6 +1,8 @@
 ﻿extends Control
 
 const UI_FONT := preload("res://assets/fonts/NotoSansCJKjp-Regular.otf")
+const BOARD_CELL_SIZE := Vector2(84, 64)
+const BOARD_CELL_GAP := 8
 
 const SPACE_COLORS := {
 	"start": Color("#3d7a59"),
@@ -115,21 +117,28 @@ func _build_ui() -> void:
 	board_margin.add_theme_constant_override("margin_bottom", 12)
 	board_panel.add_child(board_margin)
 
+	var board_scroll := ScrollContainer.new()
+	board_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	board_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	board_scroll.follow_focus = false
+	board_margin.add_child(board_scroll)
+
 	var board_grid := GridContainer.new()
 	board_grid.columns = game_state.get_board_width()
-	board_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	board_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	board_grid.add_theme_constant_override("h_separation", 8)
-	board_grid.add_theme_constant_override("v_separation", 8)
-	board_margin.add_child(board_grid)
+	board_grid.custom_minimum_size = Vector2(
+		game_state.get_board_width() * (BOARD_CELL_SIZE.x + BOARD_CELL_GAP),
+		game_state.get_board_height() * (BOARD_CELL_SIZE.y + BOARD_CELL_GAP)
+	)
+	board_grid.add_theme_constant_override("h_separation", BOARD_CELL_GAP)
+	board_grid.add_theme_constant_override("v_separation", BOARD_CELL_GAP)
+	board_scroll.add_child(board_grid)
 
 	board_buttons.clear()
 	for i in range(game_state.get_board_width() * game_state.get_board_height()):
 		var button := Button.new()
-		button.custom_minimum_size = Vector2(78, 62)
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		button.custom_minimum_size = BOARD_CELL_SIZE
 		button.focus_mode = Control.FOCUS_NONE
+		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		board_grid.add_child(button)
 		board_buttons.append(button)
 
