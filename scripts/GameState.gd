@@ -253,6 +253,7 @@ func _advance_pending_steps() -> void:
 		add_log("%s に進みました。" % arrived_space.get("label", "マス"))
 		if int(player.get("pending_steps", 0)) > 0 and get_next_ids(arrived_space).size() > 1:
 			add_log("分岐点です。進むルートを選んでください。")
+			_request_space_scene(arrived_space, "分岐点", "%s\n残り歩数を進めるルートを選んでください。" % String(arrived_space.get("description", "道が複数に分かれています。")))
 			break
 
 	if moved and int(player.get("pending_steps", 0)) == 0:
@@ -340,8 +341,13 @@ func _request_event(category: String) -> void:
 
 
 func _request_space_scene(space: Dictionary, title: String, body: String) -> void:
+	var raw_id = space.get("id", "unknown")
+	var scene_id := str(raw_id)
+	if typeof(raw_id) == TYPE_INT or typeof(raw_id) == TYPE_FLOAT:
+		scene_id = str(int(raw_id))
+
 	event_requested.emit({
-		"id": "space_%s" % str(space.get("id", "unknown")),
+		"id": "space_%s" % scene_id,
 		"category": str(space.get("category", space.get("type", "space"))),
 		"space_type": str(space.get("type", "space")),
 		"title": title,
