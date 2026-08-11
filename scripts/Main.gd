@@ -1,8 +1,8 @@
 ﻿extends Control
 
 const UI_FONT := preload("res://assets/fonts/NotoSansCJKjp-Regular.otf")
-const BOARD_CELL_SIZE := Vector2(84, 64)
-const BOARD_CELL_GAP := 8
+const BOARD_MAP_SCRIPT := preload("res://scripts/BoardMap.gd")
+const MAP_NODE_SIZE := Vector2(96, 58)
 
 const SPACE_COLORS := {
 	"start": Color("#3d7a59"),
@@ -18,6 +18,9 @@ const SPACE_COLORS := {
 }
 
 var board_buttons: Array[Button] = []
+var board_map
+var board_scroll: ScrollContainer
+var last_centered_position := -1
 var stats_label: Label
 var log_label: Label
 var event_panel: PanelContainer
@@ -67,14 +70,14 @@ func _build_ui() -> void:
 
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 16)
-	margin.add_theme_constant_override("margin_top", 14)
-	margin.add_theme_constant_override("margin_right", 16)
-	margin.add_theme_constant_override("margin_bottom", 14)
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 10)
 	add_child(margin)
 
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 10)
+	root.add_theme_constant_override("separation", 8)
 	margin.add_child(root)
 
 	var header := HBoxContainer.new()
@@ -82,8 +85,8 @@ func _build_ui() -> void:
 	root.add_child(header)
 
 	var title := Label.new()
-	title.text = "ルート分岐育成RPG"
-	title.add_theme_font_size_override("font_size", 24)
+	title.text = "SHIZUKU"
+	title.add_theme_font_size_override("font_size", 22)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
 
@@ -93,16 +96,16 @@ func _build_ui() -> void:
 	adult_check.toggled.connect(_on_adult_toggled)
 	header.add_child(adult_check)
 
-	var new_button := _make_button("New", Color("#394050"))
+	var new_button := _make_utility_button("New")
 	new_button.tooltip_text = "新規ゲーム"
 	new_button.pressed.connect(game_state.new_game)
 	header.add_child(new_button)
 
-	var save_button := _make_button("Save", Color("#394050"))
+	var save_button := _make_utility_button("Save")
 	save_button.pressed.connect(game_state.save_game)
 	header.add_child(save_button)
 
-	var load_button := _make_button("Load", Color("#394050"))
+	var load_button := _make_utility_button("Load")
 	load_button.pressed.connect(game_state.load_game)
 	header.add_child(load_button)
 
@@ -124,41 +127,35 @@ func _build_ui() -> void:
 	board_margin.add_theme_constant_override("margin_bottom", 12)
 	board_panel.add_child(board_margin)
 
-	var board_scroll := ScrollContainer.new()
+	board_scroll = ScrollContainer.new()
 	board_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	board_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	board_scroll.follow_focus = false
 	board_margin.add_child(board_scroll)
 
-	var board_grid := GridContainer.new()
-	board_grid.columns = game_state.get_board_width()
-	board_grid.custom_minimum_size = Vector2(
-		game_state.get_board_width() * (BOARD_CELL_SIZE.x + BOARD_CELL_GAP),
-		game_state.get_board_height() * (BOARD_CELL_SIZE.y + BOARD_CELL_GAP)
-	)
-	board_grid.add_theme_constant_override("h_separation", BOARD_CELL_GAP)
-	board_grid.add_theme_constant_override("v_separation", BOARD_CELL_GAP)
-	board_scroll.add_child(board_grid)
+	board_map = BOARD_MAP_SCRIPT.new()
+	board_map.configure(game_state.board_data)
+	board_scroll.add_child(board_map)
 
 	board_buttons.clear()
-	for i in range(game_state.get_board_width() * game_state.get_board_height()):
-		var button := Button.new()
-		button.custom_minimum_size = BOARD_CELL_SIZE
+	for space in game_state.get_spaces():
+		var button := _make_map_node_button(space)
+		button.position = board_map.get_space_position(space)
 		button.focus_mode = Control.FOCUS_NONE
 		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		board_grid.add_child(button)
+		board_map.add_child(button)
 		board_buttons.append(button)
 
 	var side := VBoxContainer.new()
-	side.custom_minimum_size = Vector2(360, 0)
+	side.custom_minimum_size = Vector2(330, 0)
 	side.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	side.add_theme_constant_override("separation", 10)
+	side.add_theme_constant_override("separation", 8)
 	main_row.add_child(side)
 
 	stats_label = Label.new()
 	stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	stats_label.add_theme_font_size_override("font_size", 16)
-	side.add_child(_wrap_panel(stats_label, Color("#202632"), Vector2(0, 122)))
+	side.add_child(_wrap_panel(stats_label, Color("#202632"), Vector2(0, 104)))
 
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 8)
@@ -299,7 +296,7 @@ func _build_ui() -> void:
 	log_label = Label.new()
 	log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	log_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	side.add_child(_wrap_panel(log_label, Color("#202632"), Vector2(0, 160)))
+	side.add_child(_wrap_panel(log_label, Color("#202632"), Vector2(0, 132)))
 
 	_build_orientation_overlay()
 
@@ -327,28 +324,25 @@ func _render() -> void:
 	roll_button.disabled = game_state.is_in_battle() or game_state.needs_route_choice() or int(p.get("pending_steps", 0)) > 0 or bool(p.get("finished", false))
 
 	var position := int(p.get("position", 0))
-	var width: int = game_state.get_board_width()
-	for i in range(board_buttons.size()):
-		var cell_x := i % width
-		var cell_y := floori(float(i) / float(width))
-		var space: Dictionary = game_state.get_space_at_cell(cell_x, cell_y)
-		if space.is_empty():
-			board_buttons[i].text = ""
-			board_buttons[i].tooltip_text = "空きマス"
-			board_buttons[i].disabled = true
-			board_buttons[i].add_theme_stylebox_override("disabled", _button_style(SPACE_COLORS["empty"], false))
-			continue
+	var route_options: Array = game_state.get_route_options()
+	var option_ids: Array[int] = []
+	for raw_option in route_options:
+		option_ids.append(int(raw_option.get("id", -1)))
+	board_map.set_focus_state(position, option_ids)
 
+	for button in board_buttons:
+		var space: Dictionary = game_state.get_space_by_id(int(button.get_meta("space_id")))
 		var type_name := String(space.get("type", ""))
 		var base_color: Color = SPACE_COLORS.get(type_name, Color("#394050"))
 		var is_current := int(space.get("id", -1)) == position
+		var is_option := option_ids.has(int(space.get("id", -1)))
 		var text_prefix := "現在\n" if is_current else ""
-		board_buttons[i].disabled = false
-		board_buttons[i].tooltip_text = String(space.get("description", ""))
-		board_buttons[i].text = "%s%02d\n%s" % [text_prefix, int(space.get("id", -1)), space.get("label", "")]
-		board_buttons[i].add_theme_stylebox_override("normal", _button_style(base_color.lightened(0.16 if is_current else 0.0), is_current))
-		board_buttons[i].add_theme_stylebox_override("hover", _button_style(base_color.lightened(0.12), is_current))
-		board_buttons[i].add_theme_stylebox_override("pressed", _button_style(base_color.darkened(0.1), is_current))
+		button.tooltip_text = String(space.get("description", ""))
+		button.text = "%s%02d\n%s" % [text_prefix, int(space.get("id", -1)), space.get("label", "")]
+		button.add_theme_stylebox_override("normal", _button_style(base_color.lightened(0.18 if is_current else 0.08 if is_option else 0.0), is_current or is_option))
+		button.add_theme_stylebox_override("hover", _button_style(base_color.lightened(0.12), is_current or is_option))
+		button.add_theme_stylebox_override("pressed", _button_style(base_color.darkened(0.1), is_current or is_option))
+	_center_current_space(position)
 
 	if game_state.is_in_battle():
 		var enemy: Dictionary = game_state.battle.get("enemy", {})
@@ -470,6 +464,22 @@ func _hide_event() -> void:
 	event_panel.visible = false
 
 
+func _center_current_space(position: int) -> void:
+	if position == last_centered_position:
+		return
+	last_centered_position = position
+	var space: Dictionary = game_state.get_space_by_id(position)
+	if space.is_empty():
+		return
+	call_deferred("_apply_map_center", board_map.get_space_center(space))
+
+
+func _apply_map_center(center: Vector2) -> void:
+	var view_size := board_scroll.size
+	board_scroll.scroll_horizontal = maxi(0, int(center.x - view_size.x * 0.5))
+	board_scroll.scroll_vertical = maxi(0, int(center.y - view_size.y * 0.5))
+
+
 func _wrap_panel(content: Control, color: Color, min_size: Vector2) -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = min_size
@@ -483,6 +493,29 @@ func _wrap_panel(content: Control, color: Color, min_size: Vector2) -> PanelCont
 	panel.add_child(margin)
 	margin.add_child(content)
 	return panel
+
+
+func _make_map_node_button(space: Dictionary) -> Button:
+	var type_name := String(space.get("type", ""))
+	var color: Color = SPACE_COLORS.get(type_name, Color("#394050"))
+	var button := Button.new()
+	button.text = "%02d\n%s" % [int(space.get("id", -1)), space.get("label", "")]
+	button.custom_minimum_size = MAP_NODE_SIZE
+	button.size = MAP_NODE_SIZE
+	button.set_meta("space_id", int(space.get("id", -1)))
+	button.tooltip_text = String(space.get("description", ""))
+	button.add_theme_font_size_override("font_size", 17)
+	button.add_theme_stylebox_override("normal", _button_style(color, false))
+	button.add_theme_stylebox_override("hover", _button_style(color.lightened(0.08), false))
+	button.add_theme_stylebox_override("pressed", _button_style(color.darkened(0.08), false))
+	return button
+
+
+func _make_utility_button(text: String) -> Button:
+	var button := _make_button(text, Color("#303847"))
+	button.custom_minimum_size = Vector2(84, 34)
+	button.size_flags_horizontal = Control.SIZE_SHRINK_END
+	return button
 
 
 func _make_button(text: String, color: Color) -> Button:
