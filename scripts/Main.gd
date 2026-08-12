@@ -590,8 +590,8 @@ func _apply_responsive_layout() -> void:
 	var viewport_size := get_viewport_rect().size
 	var portrait := viewport_size.y > viewport_size.x
 	main_layout.columns = 1 if portrait else 2
-	map_panel.custom_minimum_size = Vector2(0, 320) if portrait else Vector2(maxf(420.0, viewport_size.x - 390.0), 0)
-	map_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	map_panel.custom_minimum_size = Vector2(0, 300) if portrait else Vector2(maxf(420.0, viewport_size.x - 390.0), 0)
+	map_panel.size_flags_vertical = Control.SIZE_FILL if portrait else Control.SIZE_EXPAND_FILL
 	hud_panel.custom_minimum_size = Vector2(0, 0) if portrait else Vector2(342, 0)
 	hud_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hud_panel.size_flags_vertical = Control.SIZE_FILL if portrait else Control.SIZE_EXPAND_FILL
