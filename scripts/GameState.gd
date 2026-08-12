@@ -9,6 +9,14 @@ const EVENTS_PATH := "res://data/events.json"
 const ENEMIES_PATH := "res://data/enemies.json"
 const CHARACTERS_PATH := "res://data/characters.json"
 const SAVE_PATH := "user://sugoroku_training_rpg_save.json"
+const ROUTE_PROFILES := {
+	"balanced": {"label": "標準路", "travel": 0, "danger": 0, "train": 0, "gold": 1.0, "battle": 1.0, "rest": 0, "score": 1},
+	"safe": {"label": "安全路", "travel": -1, "danger": -1, "train": 0, "gold": 0.9, "battle": 0.9, "rest": 1, "score": 1},
+	"training": {"label": "鍛錬路", "travel": 0, "danger": 0, "train": 1, "gold": 1.0, "battle": 1.0, "rest": 0, "score": 2},
+	"danger": {"label": "危険路", "travel": 1, "danger": 2, "train": 0, "gold": 1.25, "battle": 1.5, "rest": 0, "score": 3},
+	"reward": {"label": "報酬路", "travel": 1, "danger": 0, "train": 0, "gold": 1.5, "battle": 1.1, "rest": 0, "score": 2},
+	"recovery": {"label": "休息路", "travel": -1, "danger": -2, "train": 0, "gold": 0.8, "battle": 0.8, "rest": 2, "score": 1}
+}
 
 var rng := RandomNumberGenerator.new()
 var board_data: Dictionary = {}
@@ -70,6 +78,9 @@ func new_game() -> void:
 		"stamina": int(base.get("max_stamina", 10)),
 		"max_stamina": int(base.get("max_stamina", 10)),
 		"gold": int(base.get("gold", 50)),
+		"danger": 0,
+		"route_score": 0,
+		"route_profile": "balanced",
 		"stats": stats,
 		"adult_content_enabled": false,
 		"gallery": [],
@@ -162,6 +173,7 @@ func choose_route(next_id: int) -> void:
 
 	player["selected_next_id"] = next_id
 	var next_space := get_space_by_id(next_id)
+	_set_route_profile(_get_space_route_profile(next_space))
 	add_log("ルート選択: %s" % next_space.get("route_label", next_space.get("label", "次の道")))
 	_move_to_space(next_id)
 
@@ -213,6 +225,7 @@ func rest() -> void:
 		add_log("戦闘中は休息できません。")
 		return
 	_heal(22, 5)
+	_adjust_danger(-2)
 	add_log("休息して回復しました。")
 	changed.emit()
 
@@ -229,6 +242,7 @@ func _move_to_space(next_id: int) -> void:
 	player["turn"] = int(player.get("turn", 0)) + 1
 	add_log("%s に進みました。" % next_space.get("label", "マス"))
 	_apply_travel_cost(next_space)
+	_apply_route_pressure(next_space)
 	_resolve_space(next_space)
 	changed.emit()
 
@@ -238,7 +252,11 @@ func _apply_travel_cost(space: Dictionary) -> void:
 	if ["start", "rest"].has(type_name):
 		return
 
-	var cost := 2 if bool(space.get("strong", false)) else 1
+	var cost := _get_travel_cost(space)
+	if cost <= 0:
+		add_log("%sなので移動ST消費なし。" % get_active_route_label())
+		return
+
 	if int(player.get("stamina", 0)) >= cost:
 		_apply_effects({"stamina": -cost})
 		add_log("探索でSTを%d消費。" % cost)
@@ -246,7 +264,25 @@ func _apply_travel_cost(space: Dictionary) -> void:
 
 	var damage := 6 + cost * 2
 	_apply_effects({"hp": -damage})
+	_adjust_danger(1)
 	add_log("疲労でHPを%d失いました。" % damage)
+
+
+func _apply_route_pressure(space: Dictionary) -> void:
+	var type_name := String(space.get("type", ""))
+	var profile := _get_active_profile()
+	var danger_delta := int(profile.get("danger", 0)) + int(space.get("danger_delta", 0))
+	if bool(space.get("strong", false)):
+		danger_delta += 1
+	if type_name == "rest":
+		danger_delta -= 2
+	elif type_name == "fork":
+		danger_delta -= 1
+	if danger_delta != 0:
+		_adjust_danger(danger_delta)
+
+	var score_gain := maxi(0, int(profile.get("score", 1)) + (1 if bool(space.get("strong", false)) else 0))
+	player["route_score"] = int(player.get("route_score", 0)) + score_gain
 
 
 func _resolve_space(space: Dictionary) -> void:
@@ -256,10 +292,11 @@ func _resolve_space(space: Dictionary) -> void:
 			add_log("拠点で少し回復しました。")
 			_request_space_scene(space, "拠点", "拠点で短く息を整えました。次の一歩へ向けて、HPとスタミナが少し回復します。")
 		"fork":
+			_set_route_profile("balanced", false)
 			add_log("%sに到着。次のルートを選べます。" % space.get("label", "分岐"))
 			_request_space_scene(space, "分岐点", "%s。ここから先のルートを選べます。" % String(space.get("description", "道が複数に分かれています。")))
 		"train":
-			_train_stat(String(space.get("stat", "str")), 2, 2)
+			_train_stat(String(space.get("stat", "str")), 2 + _get_profile_int("train", 0), 2)
 			_request_space_scene(space, "%sの鍛錬" % String(space.get("label", "鍛錬")), String(space.get("description", "主人公は旅の途中で能力を鍛えました。")))
 		"event":
 			_request_event(String(space.get("category", "daily")))
@@ -267,11 +304,13 @@ func _resolve_space(space: Dictionary) -> void:
 			_request_space_scene(space, "%s" % String(space.get("label", "遭遇")), String(space.get("description", "道中で敵の気配が近づいてきます。")))
 			start_encounter(bool(space.get("strong", false)))
 		"rest":
-			_heal(18, 4)
+			var rest_bonus := _get_profile_int("rest", 0)
+			_heal(18 + rest_bonus * 4, 4 + rest_bonus)
+			_adjust_danger(-1 - rest_bonus)
 			add_log("%sで休みました。" % space.get("label", "休息"))
 			_request_space_scene(space, "%sで休息" % String(space.get("label", "休息")), String(space.get("description", "主人公は体勢を立て直しました。")))
 		"shop":
-			var reward := rng.randi_range(8, 18)
+			var reward := ceili(float(rng.randi_range(8, 18)) * _get_profile_float("gold", 1.0))
 			_apply_effects({"gold": reward})
 			add_log("報酬として %d G を得ました。" % reward)
 			_request_space_scene(space, "%s" % String(space.get("label", "報酬")), "%s\n%d G を得ました。" % [String(space.get("description", "旅の助けになるものを手に入れました。")), reward])
@@ -395,13 +434,18 @@ func start_boss() -> void:
 
 
 func _start_battle(enemy: Dictionary) -> void:
+	var scaled_enemy := enemy.duplicate(true)
+	var danger := int(player.get("danger", 0))
+	scaled_enemy["hp"] = int(scaled_enemy.get("hp", 20)) + danger * 2
+	scaled_enemy["attack"] = int(scaled_enemy.get("attack", 5)) + floori(float(danger) / 2.0)
 	battle = {
 		"active": true,
-		"enemy": enemy.duplicate(true),
-		"enemy_hp": int(enemy.get("hp", 20)),
+		"enemy": scaled_enemy,
+		"enemy_hp": int(scaled_enemy.get("hp", 20)),
+		"reward_multiplier": _get_profile_float("battle", 1.0) + float(danger) * 0.04,
 		"guard": false
 	}
-	add_log("%s が現れました。" % enemy.get("name", "敵"))
+	add_log("%s が現れました。危険度%d" % [scaled_enemy.get("name", "敵"), danger])
 	changed.emit()
 
 
@@ -445,6 +489,7 @@ func battle_flee() -> void:
 		battle.clear()
 	else:
 		add_log("逃げられませんでした。")
+		_adjust_danger(1)
 		_enemy_turn()
 	changed.emit()
 
@@ -477,6 +522,9 @@ func _enemy_turn() -> void:
 		var defeated_by := enemy.duplicate(true)
 		player["hp"] = 1
 		player["gold"] = max(0, int(player.get("gold", 0)) - 10)
+		player["position"] = int(board_data.get("start_id", 0))
+		player["danger"] = 0
+		player["route_profile"] = "balanced"
 		battle.clear()
 		add_log("敗北。10Gを失い、拠点で目を覚ましました。")
 		if bool(player.get("adult_content_enabled", false)):
@@ -485,10 +533,12 @@ func _enemy_turn() -> void:
 
 func _win_battle() -> void:
 	var enemy: Dictionary = battle.get("enemy", {})
-	var gold := int(enemy.get("reward_gold", 0))
-	var resolve := int(enemy.get("reward_resolve", 0))
+	var reward_multiplier := float(battle.get("reward_multiplier", 1.0))
+	var gold := ceili(float(int(enemy.get("reward_gold", 0))) * reward_multiplier)
+	var resolve := int(enemy.get("reward_resolve", 0)) + floori(float(int(player.get("danger", 0))) / 3.0)
 	_apply_effects({"gold": gold, "resolve": resolve})
-	add_log("%s に勝利。%d G を獲得。" % [enemy.get("name", "敵"), gold])
+	_adjust_danger(-1)
+	add_log("%s に勝利。%d G / 覚悟%d を獲得。" % [enemy.get("name", "敵"), gold, resolve])
 	battle.clear()
 	var current_space := get_current_space()
 	if String(current_space.get("type", "")) == "boss" and get_next_ids(current_space).is_empty():
@@ -562,6 +612,12 @@ func _ensure_player_route_fields() -> void:
 		player["selected_next_id"] = -1
 	if not player.has("finished"):
 		player["finished"] = false
+	if not player.has("danger"):
+		player["danger"] = 0
+	if not player.has("route_score"):
+		player["route_score"] = 0
+	if not player.has("route_profile") or not ROUTE_PROFILES.has(String(player.get("route_profile", ""))):
+		player["route_profile"] = "balanced"
 
 
 func add_log(text: String) -> void:
@@ -583,3 +639,62 @@ func _stat_label(stat: String) -> String:
 			return "覚悟"
 		_:
 			return stat
+
+
+func get_active_route_label() -> String:
+	return String(_get_active_profile().get("label", "標準路"))
+
+
+func get_route_profile_label(profile_id: String) -> String:
+	var profile: Dictionary = ROUTE_PROFILES.get(profile_id, ROUTE_PROFILES["balanced"])
+	return String(profile.get("label", "標準路"))
+
+
+func get_space_route_label(space: Dictionary) -> String:
+	return get_route_profile_label(_get_space_route_profile(space))
+
+
+func _get_space_route_profile(space: Dictionary) -> String:
+	var profile_id := String(space.get("route_profile", "balanced"))
+	if ROUTE_PROFILES.has(profile_id):
+		return profile_id
+	return "balanced"
+
+
+func _set_route_profile(profile_id: String, announce: bool = true) -> void:
+	if not ROUTE_PROFILES.has(profile_id):
+		profile_id = "balanced"
+	var before := String(player.get("route_profile", "balanced"))
+	player["route_profile"] = profile_id
+	if announce and before != profile_id:
+		add_log("%sに入りました。" % get_route_profile_label(profile_id))
+
+
+func _get_active_profile() -> Dictionary:
+	var profile_id := String(player.get("route_profile", "balanced"))
+	return ROUTE_PROFILES.get(profile_id, ROUTE_PROFILES["balanced"])
+
+
+func _get_profile_int(key: String, default_value: int) -> int:
+	return int(_get_active_profile().get(key, default_value))
+
+
+func _get_profile_float(key: String, default_value: float) -> float:
+	return float(_get_active_profile().get(key, default_value))
+
+
+func _get_travel_cost(space: Dictionary) -> int:
+	var base_cost := int(space.get("travel_cost", 2 if bool(space.get("strong", false)) else 1))
+	return maxi(0, base_cost + _get_profile_int("travel", 0))
+
+
+func _adjust_danger(amount: int) -> void:
+	if amount == 0:
+		return
+	var before := int(player.get("danger", 0))
+	var after := clampi(before + amount, 0, 10)
+	player["danger"] = after
+	if after > before:
+		add_log("危険度 +%d  現在 %d" % [after - before, after])
+	elif after < before:
+		add_log("危険度 -%d  現在 %d" % [before - after, after])

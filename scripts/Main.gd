@@ -402,7 +402,12 @@ func _render() -> void:
 
 	location_label.text = String(current_space.get("label", "現在地"))
 	route_stage_label.text = String(current_space.get("description", ""))
-	meta_label.text = "探索 %02d" % int(p.get("turn", 0))
+	meta_label.text = "探索 %02d / %s / 危険%d / 評価%d" % [
+		int(p.get("turn", 0)),
+		game_state.get_active_route_label(),
+		int(p.get("danger", 0)),
+		int(p.get("route_score", 0))
+	]
 	gold_label.text = "%d G" % int(p.get("gold", 0))
 	_set_bar(hp_bar, int(p.get("hp", 0)), int(p.get("max_hp", 100)))
 	_set_bar(stamina_bar, int(p.get("stamina", 0)), int(p.get("max_stamina", 10)))
@@ -481,24 +486,25 @@ func _render_route_choices() -> void:
 
 
 func _route_hint(space: Dictionary) -> String:
+	var route_label: String = game_state.get_space_route_label(space)
 	var type_name := String(space.get("type", ""))
 	match type_name:
 		"train":
-			return "育成 / %s +2 / ST -3" % _route_stat_label(String(space.get("stat", "")))
+			return "%s / %s育成UP" % [route_label, _route_stat_label(String(space.get("stat", "")))]
 		"event":
-			return "イベント / 絵とテキスト"
+			return "%s / イベント" % route_label
 		"encounter":
-			return "高危険 / 強敵 / ST -2" if bool(space.get("strong", false)) else "危険 / 戦闘 / ST -1"
+			return "%s / 強敵・高報酬" % route_label if bool(space.get("strong", false)) else "%s / 戦闘" % route_label
 		"rest":
-			return "休息 / HP・ST回復"
+			return "%s / 危険低下" % route_label
 		"shop":
-			return "報酬 / G獲得"
+			return "%s / G獲得" % route_label
 		"fork":
 			return "分岐 / 次の方針選択"
 		"boss":
 			return "決戦 / ルート終点"
 		_:
-			return "探索 / ST -1"
+			return "%s / 探索" % route_label
 
 
 func _route_stat_label(stat: String) -> String:
@@ -612,13 +618,13 @@ func _build_orientation_overlay() -> void:
 	center.add_child(box)
 
 	var title := Label.new()
-	title.text = "横向きにしてください"
+	title.text = "表示を調整中"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 28)
 	box.add_child(title)
 
 	var body := Label.new()
-	body.text = "スマホを横持ちにするとプレイできます。"
+	body.text = "縦持ち/横持ちのどちらでもプレイできます。"
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(body)
