@@ -633,9 +633,9 @@ func _apply_responsive_layout() -> void:
 	map_panel.size_flags_vertical = Control.SIZE_FILL if portrait else Control.SIZE_EXPAND_FILL
 	hud_panel.custom_minimum_size = Vector2(0, 0) if portrait else Vector2(342, 0)
 	hud_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hud_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	hud_panel.size_flags_vertical = Control.SIZE_FILL if portrait else Control.SIZE_EXPAND_FILL
 	narration_panel.custom_minimum_size = Vector2(0, 86) if portrait else Vector2(0, 92)
-	narration_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	narration_panel.size_flags_vertical = Control.SIZE_FILL if portrait else Control.SIZE_EXPAND_FILL
 	event_dialog.custom_minimum_size = Vector2(minf(560.0, maxf(320.0, viewport_size.x - 34.0)), 0)
 	event_image.custom_minimum_size = Vector2(0, 150 if portrait else 190)
 	orientation_overlay.visible = false
