@@ -371,7 +371,8 @@ func _build_battle_card() -> Control:
 
 func _build_narration_card() -> Control:
 	narration_panel = PanelContainer.new()
-	narration_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	narration_panel.custom_minimum_size = Vector2(0, 92)
+	narration_panel.size_flags_vertical = Control.SIZE_FILL
 	narration_panel.add_theme_stylebox_override("panel", _panel_style(Color("#171e29"), Color("#303b4c"), 1, 10))
 
 	var margin := _panel_margin(narration_panel, 8)
@@ -589,11 +590,13 @@ func _apply_responsive_layout() -> void:
 	var viewport_size := get_viewport_rect().size
 	var portrait := viewport_size.y > viewport_size.x
 	main_layout.columns = 1 if portrait else 2
-	map_panel.custom_minimum_size = Vector2(0, 390) if portrait else Vector2(maxf(420.0, viewport_size.x - 390.0), 0)
-	map_panel.size_flags_vertical = Control.SIZE_FILL if portrait else Control.SIZE_EXPAND_FILL
+	map_panel.custom_minimum_size = Vector2(0, 320) if portrait else Vector2(maxf(420.0, viewport_size.x - 390.0), 0)
+	map_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	hud_panel.custom_minimum_size = Vector2(0, 0) if portrait else Vector2(342, 0)
 	hud_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hud_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	hud_panel.size_flags_vertical = Control.SIZE_FILL if portrait else Control.SIZE_EXPAND_FILL
+	narration_panel.custom_minimum_size = Vector2(0, 86) if portrait else Vector2(0, 92)
+	narration_panel.size_flags_vertical = Control.SIZE_FILL if portrait else Control.SIZE_EXPAND_FILL
 	event_dialog.custom_minimum_size = Vector2(minf(560.0, maxf(320.0, viewport_size.x - 34.0)), 0)
 	event_image.custom_minimum_size = Vector2(0, 150 if portrait else 190)
 	orientation_overlay.visible = false
