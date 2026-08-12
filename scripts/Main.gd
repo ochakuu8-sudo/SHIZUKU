@@ -52,7 +52,7 @@ var route_status: Label
 var route_box: VBoxContainer
 var narration_panel: PanelContainer
 var orientation_overlay: PanelContainer
-var roll_button: Button
+var advance_button: Button
 var adult_check: CheckBox
 var game_state
 
@@ -271,11 +271,11 @@ func _build_action_card() -> Control:
 	box.add_theme_constant_override("separation", 6)
 	margin.add_child(box)
 
-	roll_button = _make_button("サイコロを振る", Color("#d77555"), true)
-	roll_button.custom_minimum_size = Vector2(0, 44)
-	roll_button.add_theme_font_size_override("font_size", 19)
-	roll_button.pressed.connect(game_state.roll_dice)
-	box.add_child(roll_button)
+	advance_button = _make_button("次へ進む", Color("#d77555"), true)
+	advance_button.custom_minimum_size = Vector2(0, 44)
+	advance_button.add_theme_font_size_override("font_size", 19)
+	advance_button.pressed.connect(game_state.advance_route)
+	box.add_child(advance_button)
 
 	var rest_button := _make_button("休息", Color("#5c95a1"))
 	rest_button.pressed.connect(game_state.rest)
@@ -399,11 +399,10 @@ func _render() -> void:
 	var p: Dictionary = game_state.player
 	var stats: Dictionary = p.get("stats", {})
 	var current_space: Dictionary = game_state.get_current_space()
-	var pending_steps := int(p.get("pending_steps", 0))
 
 	location_label.text = String(current_space.get("label", "現在地"))
 	route_stage_label.text = String(current_space.get("description", ""))
-	meta_label.text = "TURN %02d   残り歩数 %d" % [int(p.get("turn", 0)), pending_steps]
+	meta_label.text = "探索 %02d" % int(p.get("turn", 0))
 	gold_label.text = "%d G" % int(p.get("gold", 0))
 	_set_bar(hp_bar, int(p.get("hp", 0)), int(p.get("max_hp", 100)))
 	_set_bar(stamina_bar, int(p.get("stamina", 0)), int(p.get("max_stamina", 10)))
@@ -413,8 +412,8 @@ func _render() -> void:
 	_set_stat_text("resolve", "覚悟", int(stats.get("resolve", 0)))
 
 	adult_check.set_pressed_no_signal(bool(p.get("adult_content_enabled", false)))
-	roll_button.disabled = game_state.is_in_battle() or game_state.needs_route_choice() or pending_steps > 0 or bool(p.get("finished", false))
-	roll_button.text = "踏破済み" if bool(p.get("finished", false)) else "ルートを選択" if game_state.needs_route_choice() else "サイコロを振る"
+	advance_button.disabled = game_state.is_in_battle() or game_state.needs_route_choice() or bool(p.get("finished", false))
+	advance_button.text = "踏破済み" if bool(p.get("finished", false)) else "ルートを選択" if game_state.needs_route_choice() else "次へ進む"
 
 	var position := int(p.get("position", 0))
 	var route_options: Array = game_state.get_route_options()
@@ -461,8 +460,7 @@ func _render_route_choices() -> void:
 	if not route_panel.visible:
 		return
 
-	var pending_steps := int(game_state.player.get("pending_steps", 0))
-	route_status.text = "残り%d歩。進む先を選んでください。" % pending_steps if pending_steps > 0 else "次に進むルートを選べます。"
+	route_status.text = "進む先を選んでください。危険な道ほど報酬も大きくなります。"
 
 	var selected_id := int(game_state.player.get("selected_next_id", -1))
 	for raw_option in options:
@@ -470,13 +468,53 @@ func _render_route_choices() -> void:
 		var next_id := int(option.get("id", -1))
 		var label := String(option.get("route_label", option.get("label", "ルート")))
 		var button := _make_button(label, SPACE_COLORS.get(String(option.get("type", "")), Color("#5572a8")), true)
+		button.text = "%s\n%s" % [label, _route_hint(option)]
+		button.custom_minimum_size = Vector2(0, 54)
+		button.add_theme_font_size_override("font_size", 15)
 		button.tooltip_text = String(option.get("description", ""))
 		if next_id == selected_id:
-			button.text = "選択中: %s" % label
+			button.text = "選択中\n%s" % label
 			button.disabled = true
 		else:
 			button.pressed.connect(func() -> void: game_state.choose_route(next_id))
 		route_box.add_child(button)
+
+
+func _route_hint(space: Dictionary) -> String:
+	var type_name := String(space.get("type", ""))
+	match type_name:
+		"train":
+			return "育成 / %s +2 / ST -3" % _route_stat_label(String(space.get("stat", "")))
+		"event":
+			return "イベント / 絵とテキスト"
+		"encounter":
+			return "高危険 / 強敵 / ST -2" if bool(space.get("strong", false)) else "危険 / 戦闘 / ST -1"
+		"rest":
+			return "休息 / HP・ST回復"
+		"shop":
+			return "報酬 / G獲得"
+		"fork":
+			return "分岐 / 次の方針選択"
+		"boss":
+			return "決戦 / ルート終点"
+		_:
+			return "探索 / ST -1"
+
+
+func _route_stat_label(stat: String) -> String:
+	match stat:
+		"str":
+			return "筋力"
+		"charm":
+			return "魅力"
+		"mind":
+			return "知性"
+		"resolve":
+			return "覚悟"
+		"all":
+			return "全能力"
+		_:
+			return "能力"
 
 
 func _build_event_overlay() -> void:

@@ -17,7 +17,6 @@ var enemies_data: Dictionary = {}
 var characters_data: Dictionary = {}
 var player: Dictionary = {}
 var battle: Dictionary = {}
-var last_roll := 0
 var logs: Array[String] = []
 
 
@@ -64,7 +63,6 @@ func new_game() -> void:
 		"day": 1,
 		"turn": 0,
 		"position": 0,
-		"pending_steps": 0,
 		"selected_next_id": -1,
 		"finished": false,
 		"hp": int(base.get("max_hp", 100)),
@@ -79,7 +77,6 @@ func new_game() -> void:
 	}
 	player["position"] = int(board_data.get("start_id", 0))
 	battle.clear()
-	last_roll = 0
 	logs.clear()
 	add_log("新しいルート攻略を開始しました。")
 	changed.emit()
@@ -149,7 +146,7 @@ func get_route_options() -> Array:
 
 func needs_route_choice() -> bool:
 	var next_ids := get_next_ids(get_current_space())
-	return next_ids.size() > 1 and not next_ids.has(int(player.get("selected_next_id", -1)))
+	return next_ids.size() > 1
 
 
 func choose_route(next_id: int) -> void:
@@ -166,8 +163,7 @@ func choose_route(next_id: int) -> void:
 	player["selected_next_id"] = next_id
 	var next_space := get_space_by_id(next_id)
 	add_log("ルート選択: %s" % next_space.get("route_label", next_space.get("label", "次の道")))
-	_advance_pending_steps()
-	changed.emit()
+	_move_to_space(next_id)
 
 
 func set_adult_content_enabled(enabled: bool) -> void:
@@ -176,9 +172,9 @@ func set_adult_content_enabled(enabled: bool) -> void:
 	changed.emit()
 
 
-func roll_dice() -> void:
+func advance_route() -> void:
 	if is_in_battle():
-		add_log("戦闘中はサイコロを振れません。")
+		add_log("戦闘中は移動できません。")
 		return
 
 	if bool(player.get("finished", false)):
@@ -195,12 +191,13 @@ func roll_dice() -> void:
 		changed.emit()
 		return
 
-	last_roll = rng.randi_range(1, 6)
-	player["pending_steps"] = last_roll
-	player["turn"] = int(player.get("turn", 0)) + 1
-	add_log("サイコロ: %d" % last_roll)
-	_advance_pending_steps()
-	changed.emit()
+	var next_ids := get_next_ids(get_current_space())
+	if next_ids.is_empty():
+		player["finished"] = true
+		add_log("ルートの終点に到着しました。")
+		changed.emit()
+		return
+	_move_to_space(int(next_ids[0]))
 
 
 func manual_train(stat: String) -> void:
@@ -220,44 +217,36 @@ func rest() -> void:
 	changed.emit()
 
 
-func _advance_pending_steps() -> void:
-	var moved := false
-	while int(player.get("pending_steps", 0)) > 0:
-		var current_space := get_current_space()
-		var next_ids := get_next_ids(current_space)
-		if next_ids.is_empty():
-			player["pending_steps"] = 0
-			if String(current_space.get("type", "")) == "boss":
-				add_log("試練の場に到着しました。")
-			else:
-				player["finished"] = true
-				add_log("ルートの終点に到着しました。")
-			break
+func _move_to_space(next_id: int) -> void:
+	var next_space := get_space_by_id(next_id)
+	if next_space.is_empty():
+		add_log("進行先が見つかりません。")
+		changed.emit()
+		return
 
-		var next_id := -1
-		if next_ids.size() > 1:
-			var selected_id := int(player.get("selected_next_id", -1))
-			if not next_ids.has(selected_id):
-				add_log("分岐点です。進むルートを選んでください。")
-				break
-			next_id = selected_id
-			player["selected_next_id"] = -1
-		else:
-			next_id = int(next_ids[0])
+	player["selected_next_id"] = -1
+	player["position"] = next_id
+	player["turn"] = int(player.get("turn", 0)) + 1
+	add_log("%s に進みました。" % next_space.get("label", "マス"))
+	_apply_travel_cost(next_space)
+	_resolve_space(next_space)
+	changed.emit()
 
-		player["position"] = next_id
-		player["pending_steps"] = maxi(0, int(player.get("pending_steps", 0)) - 1)
-		moved = true
 
-		var arrived_space := get_current_space()
-		add_log("%s に進みました。" % arrived_space.get("label", "マス"))
-		if int(player.get("pending_steps", 0)) > 0 and get_next_ids(arrived_space).size() > 1:
-			add_log("分岐点です。進むルートを選んでください。")
-			_request_space_scene(arrived_space, "分岐点", "%s\n残り歩数を進めるルートを選んでください。" % String(arrived_space.get("description", "道が複数に分かれています。")))
-			break
+func _apply_travel_cost(space: Dictionary) -> void:
+	var type_name := String(space.get("type", ""))
+	if ["start", "rest"].has(type_name):
+		return
 
-	if moved and int(player.get("pending_steps", 0)) == 0:
-		_resolve_space(get_current_space())
+	var cost := 2 if bool(space.get("strong", false)) else 1
+	if int(player.get("stamina", 0)) >= cost:
+		_apply_effects({"stamina": -cost})
+		add_log("探索でSTを%d消費。" % cost)
+		return
+
+	var damage := 6 + cost * 2
+	_apply_effects({"hp": -damage})
+	add_log("疲労でHPを%d失いました。" % damage)
 
 
 func _resolve_space(space: Dictionary) -> void:
@@ -569,8 +558,6 @@ func _ensure_player_route_fields() -> void:
 		player["stats"].erase("bond")
 	if not player.has("position"):
 		player["position"] = int(board_data.get("start_id", 0))
-	if not player.has("pending_steps"):
-		player["pending_steps"] = 0
 	if not player.has("selected_next_id"):
 		player["selected_next_id"] = -1
 	if not player.has("finished"):
