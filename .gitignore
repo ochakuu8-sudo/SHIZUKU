@@ -1,5 +1,6 @@
 .godot/
 build/
+screenshots/
 *.tmp
 *.translation
 export/
