@@ -27,6 +27,16 @@ Godot 4.5 でプロジェクトを開き、そのまま実行できます。
 & "C:\Godot_v4.5-stable_win64.exe\Godot_v4.5-stable_win64_console.exe" --path . --quit-after 8
 ```
 
+## 自動テスト
+
+`tests/test_runner.gd` に、外部アドオンに依存しないヘッドレステストがあります。盤面データの整合性やバトル/育成ロジックの不変条件を検証します。GitHub Actionsではビルド前に自動実行されます。ローカルで実行する場合:
+
+```bash
+godot --headless --script res://tests/test_runner.gd
+```
+
+全チェックに通ると `OK: N checks passed` と表示され、終了コード0を返します。失敗すると `FAIL: ...` の内容とともに終了コード1を返します。
+
 ## NSFW素材について
 
 GitHub Pagesは公開URLになります。成人向けの文章や画像を入れる前は、必ず公開範囲を確認してください。

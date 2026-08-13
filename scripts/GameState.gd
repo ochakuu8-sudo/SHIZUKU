@@ -125,6 +125,8 @@ func get_current_space() -> Dictionary:
 		return {}
 	var current_space := get_space_by_id(int(player.get("position", board_data.get("start_id", 0))))
 	if current_space.is_empty():
+		current_space = get_space_by_id(int(board_data.get("start_id", 0)))
+	if current_space.is_empty():
 		return spaces[0]
 	return current_space
 
@@ -242,6 +244,10 @@ func _move_to_space(next_id: int) -> void:
 	player["turn"] = int(player.get("turn", 0)) + 1
 	add_log("%s に進みました。" % next_space.get("label", "マス"))
 	_apply_travel_cost(next_space)
+	if int(player.get("position", -1)) != next_id:
+		# 疲労で倒れて拠点へ送還された場合、このマスの処理は行わない。
+		changed.emit()
+		return
 	_apply_route_pressure(next_space)
 	_resolve_space(next_space)
 	changed.emit()
@@ -266,6 +272,8 @@ func _apply_travel_cost(space: Dictionary) -> void:
 	_apply_effects({"hp": -damage})
 	_adjust_danger(1)
 	add_log("疲労でHPを%d失いました。" % damage)
+	if int(player.get("hp", 0)) <= 0:
+		_handle_defeat({"id": "exhaustion", "name": "疲労困憊"})
 
 
 func _apply_route_pressure(space: Dictionary) -> void:
@@ -329,7 +337,8 @@ func _train_stat(stat: String, amount: int, stamina_cost: int) -> void:
 
 	_apply_effects({"stamina": -stamina_cost})
 	if stat == "all":
-		_apply_effects({"str": 1, "charm": 1, "mind": 1})
+		var each_amount := maxi(1, amount - 1)
+		_apply_effects({"str": each_amount, "charm": each_amount, "mind": each_amount})
 		add_log("総合トレーニングで能力が少し伸びました。")
 	else:
 		_apply_effects({stat: amount})
@@ -346,18 +355,7 @@ func _request_event(category: String) -> void:
 		candidates.append(event)
 
 	if candidates.is_empty():
-		if category == "defeat":
-			event_requested.emit({
-				"id": "defeat_disabled",
-				"category": "system",
-				"title": "18+素材は無効です",
-				"body": "敗北時の成人向け差し替え枠は無効です。設定を有効にすると、敗北時にあなたの用意した文章と画像を再生できます。",
-				"image_path": "",
-				"adult_only": false,
-				"choices": [{"label": "閉じる", "effects": {"mind": 1}}]
-			})
-		else:
-			add_log("イベント候補がありません。")
+		add_log("イベント候補がありません。")
 		return
 
 	var picked: Dictionary = candidates[rng.randi_range(0, candidates.size() - 1)].duplicate(true)
@@ -396,6 +394,11 @@ func _request_defeat_event(enemy: Dictionary) -> void:
 		candidates.append(event)
 
 	if candidates.is_empty():
+		# defeatカテゴリに再生できるイベントが無い場合でも、敗北の演出自体は必ず表示する。
+		var body := "敗北し、拠点まで運ばれました。体勢を立て直して、また前へ進みましょう。"
+		if not bool(player.get("adult_content_enabled", false)):
+			body += "\n(敗北18+差し替え枠は現在無効です。設定を有効にすると専用の演出が再生されます。)"
+		_request_space_scene({"id": "defeat_fallback", "type": "defeat", "category": "defeat"}, "敗北", body)
 		add_log("敗北イベント候補がありません。")
 		return
 
@@ -406,6 +409,17 @@ func _request_defeat_event(enemy: Dictionary) -> void:
 		player["gallery"].append(picked.get("id", ""))
 	event_requested.emit(picked)
 	add_log("敗北イベント: %s" % picked.get("title", "敗北"))
+
+
+func _handle_defeat(enemy: Dictionary) -> void:
+	player["hp"] = 1
+	player["gold"] = max(0, int(player.get("gold", 0)) - 10)
+	player["position"] = int(board_data.get("start_id", 0))
+	player["danger"] = 0
+	player["route_profile"] = "balanced"
+	battle.clear()
+	add_log("敗北。10Gを失い、拠点で目を覚ましました。")
+	_request_defeat_event(enemy)
 
 
 func apply_choice(choice: Dictionary) -> void:
@@ -421,7 +435,15 @@ func start_encounter(strong: bool) -> void:
 		return
 
 	var max_index := enemies.size() - 1
-	var enemy: Dictionary = enemies[rng.randi_range(0 if not strong else min(1, max_index), max_index)]
+	var low_index := 0
+	var high_index := max_index
+	if strong:
+		# 強敵ルートでは最弱の敵を除いた中から選ぶ。
+		low_index = mini(1, max_index)
+	else:
+		# 通常の遭遇では、最強格(ボス格)の敵は出さない。
+		high_index = maxi(0, max_index - 1)
+	var enemy: Dictionary = enemies[rng.randi_range(low_index, high_index)]
 	_start_battle(enemy)
 
 
@@ -519,16 +541,7 @@ func _enemy_turn() -> void:
 	add_log("%s の反撃。%d ダメージ。" % [enemy.get("name", "敵"), damage])
 
 	if int(player.get("hp", 0)) <= 0:
-		var defeated_by := enemy.duplicate(true)
-		player["hp"] = 1
-		player["gold"] = max(0, int(player.get("gold", 0)) - 10)
-		player["position"] = int(board_data.get("start_id", 0))
-		player["danger"] = 0
-		player["route_profile"] = "balanced"
-		battle.clear()
-		add_log("敗北。10Gを失い、拠点で目を覚ましました。")
-		if bool(player.get("adult_content_enabled", false)):
-			_request_defeat_event(defeated_by)
+		_handle_defeat(enemy.duplicate(true))
 
 
 func _win_battle() -> void:
@@ -544,6 +557,35 @@ func _win_battle() -> void:
 	if String(current_space.get("type", "")) == "boss" and get_next_ids(current_space).is_empty():
 		player["finished"] = true
 		add_log("ルートを踏破しました。")
+		_show_route_clear()
+
+
+func _show_route_clear() -> void:
+	var score := int(player.get("route_score", 0))
+	var rank := "C"
+	if score >= 70:
+		rank = "S"
+	elif score >= 50:
+		rank = "A"
+	elif score >= 30:
+		rank = "B"
+	event_requested.emit({
+		"id": "route_clear",
+		"category": "system",
+		"space_type": "boss",
+		"title": "ルート踏破",
+		"body": "%s の育成成果でルートを踏破しました。\n踏破評価: %d (ランク %s)\nHP %d/%d ・ 所持金 %d G" % [
+			String(player.get("name", "主人公")),
+			score,
+			rank,
+			int(player.get("hp", 0)),
+			int(player.get("max_hp", 100)),
+			int(player.get("gold", 0))
+		],
+		"image_path": "",
+		"adult_only": false,
+		"choices": []
+	})
 
 
 func _heal(hp_amount: int, stamina_amount: int) -> void:
@@ -606,7 +648,7 @@ func _ensure_player_route_fields() -> void:
 	if player["stats"].has("bond") and not player["stats"].has("resolve"):
 		player["stats"]["resolve"] = int(player["stats"].get("bond", 0))
 		player["stats"].erase("bond")
-	if not player.has("position"):
+	if not player.has("position") or get_space_by_id(int(player.get("position", -1))).is_empty():
 		player["position"] = int(board_data.get("start_id", 0))
 	if not player.has("selected_next_id"):
 		player["selected_next_id"] = -1
@@ -618,6 +660,19 @@ func _ensure_player_route_fields() -> void:
 		player["route_score"] = 0
 	if not player.has("route_profile") or not ROUTE_PROFILES.has(String(player.get("route_profile", ""))):
 		player["route_profile"] = "balanced"
+	if not player.has("gallery") or not (player["gallery"] is Array):
+		player["gallery"] = []
+	if not player.has("adult_content_enabled"):
+		player["adult_content_enabled"] = false
+
+
+func get_gallery_entries() -> Array:
+	var seen_ids: Array = player.get("gallery", [])
+	var entries: Array = []
+	for event in events_data.get("events", []):
+		if seen_ids.has(event.get("id", "")):
+			entries.append(event)
+	return entries
 
 
 func add_log(text: String) -> void:

@@ -30,21 +30,37 @@ jobs:
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y unzip zip
 
+      - name: Cache Godot engine and export templates
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/godot
+            ${{ env.GODOT_TEMPLATES_DIR }}
+          key: godot-${{ env.GODOT_RELEASE }}-linux-x86_64
+
       - name: Download Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
         run: |
           curl -L -o /tmp/godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
           unzip -q /tmp/godot.zip -d /tmp/godot
-          chmod +x /tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64
 
       - name: Install export templates
+        if: steps.godot-cache.outputs.cache-hit != 'true'
         run: |
           curl -L -o /tmp/templates.tpz "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz"
           mkdir -p "${GODOT_TEMPLATES_DIR}"
           unzip -q /tmp/templates.tpz -d /tmp/templates
           mv /tmp/templates/templates/* "${GODOT_TEMPLATES_DIR}/"
 
+      - name: Make Godot binary executable
+        run: chmod +x /tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64
+
       - name: Import project
         run: /tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64 --headless --import --quit
+
+      - name: Run automated tests
+        run: /tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64 --headless --script res://tests/test_runner.gd
 
       - name: Build Windows PC
         run: |

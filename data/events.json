@@ -13,6 +13,30 @@
       ]
     },
     {
+      "id": "daily_market",
+      "category": "daily",
+      "title": "市場での立ち話",
+      "body": "露店の商人と世間話をした。旅の噂話から、ちょっとしたコツを教えてもらえた。",
+      "image_path": "",
+      "adult_only": false,
+      "choices": [
+        {"label": "商売のコツを聞く", "effects": {"charm": 2, "gold": 3}},
+        {"label": "軽く聞き流す", "effects": {"mind": 1}}
+      ]
+    },
+    {
+      "id": "daily_rain",
+      "category": "daily",
+      "title": "静かな雨宿り",
+      "body": "急な雨に軒先で雨宿りをした。何をするでもない時間が、思いのほか心を落ち着けてくれる。",
+      "image_path": "",
+      "adult_only": false,
+      "choices": [
+        {"label": "雨音を聞いて休む", "effects": {"hp": 6, "stamina": 1}},
+        {"label": "先の道筋を考える", "effects": {"mind": 2}}
+      ]
+    },
+    {
       "id": "resolve_shrine",
       "category": "resolve",
       "title": "古い祠",
@@ -22,6 +46,30 @@
       "choices": [
         {"label": "祈って進む", "effects": {"resolve": 4, "mind": 1}},
         {"label": "身支度を整える", "effects": {"resolve": 2, "charm": 2}}
+      ]
+    },
+    {
+      "id": "resolve_scar",
+      "category": "resolve",
+      "title": "古い傷跡",
+      "body": "ふと目に入った古い傷跡が、ここまでの道のりを思い出させる。痛みごと、前に進む理由にする。",
+      "image_path": "",
+      "adult_only": false,
+      "choices": [
+        {"label": "傷を糧にする", "effects": {"resolve": 3, "str": 1}},
+        {"label": "そっと目をそらす", "effects": {"resolve": 1, "mind": 1}}
+      ]
+    },
+    {
+      "id": "resolve_letter",
+      "category": "resolve",
+      "title": "書きかけの手紙",
+      "body": "誰に送るあてもない手紙を、旅の合間に少しずつ書き足している。言葉にすることで、覚悟が形になっていく。",
+      "image_path": "",
+      "adult_only": false,
+      "choices": [
+        {"label": "続きを書く", "effects": {"resolve": 3, "charm": 1}},
+        {"label": "書かずにしまう", "effects": {"resolve": 1}}
       ]
     },
     {
@@ -35,6 +83,30 @@
         {"label": "戦闘重視", "effects": {"str": 3, "gold": -5}},
         {"label": "探索重視", "effects": {"charm": 2, "resolve": 3}},
         {"label": "堅実に進める", "effects": {"mind": 2, "hp": 10}}
+      ]
+    },
+    {
+      "id": "story_turning_point",
+      "category": "story",
+      "title": "終盤への転機",
+      "body": "旅もいよいよ終盤に差し掛かる。ここまでの育成方針が、この先の戦い方を決めることになりそうだ。",
+      "image_path": "",
+      "adult_only": false,
+      "choices": [
+        {"label": "力で押し切る算段を立てる", "effects": {"str": 2, "resolve": 1}},
+        {"label": "慎重に体勢を整える", "effects": {"mind": 2, "hp": 8}}
+      ]
+    },
+    {
+      "id": "defeat_regroup",
+      "category": "defeat",
+      "title": "体勢を立て直す",
+      "body": "敗北し、拠点まで運ばれた。悔しさを覚えながらも、装備と心を整えて次の一歩に備える。",
+      "image_path": "",
+      "adult_only": false,
+      "choices": [
+        {"label": "気持ちを切り替える", "effects": {"resolve": 1}},
+        {"label": "静かに休む", "effects": {"hp": 8}}
       ]
     },
     {

@@ -43,6 +43,10 @@ var event_image: TextureRect
 var choice_box: VBoxContainer
 var event_placeholder_cache: Dictionary = {}
 
+var gallery_overlay: PanelContainer
+var gallery_list: VBoxContainer
+var new_game_confirm: ConfirmationDialog
+
 var action_panel: PanelContainer
 var battle_panel: PanelContainer
 var battle_title: Label
@@ -111,6 +115,8 @@ func _build_ui() -> void:
 	main_layout.add_child(_build_hud_panel())
 
 	_build_event_overlay()
+	_build_gallery_overlay()
+	_build_new_game_confirm()
 	_build_orientation_overlay()
 
 
@@ -139,12 +145,14 @@ func _build_top_bar() -> Control:
 	adult_check.toggled.connect(_on_adult_toggled)
 	header.add_child(adult_check)
 
+	var gallery_button := _make_utility_button("回想")
+	gallery_button.tooltip_text = "これまでに見たイベントの記録"
+	gallery_button.pressed.connect(_show_gallery)
+	header.add_child(gallery_button)
+
 	var new_button := _make_utility_button("New")
 	new_button.tooltip_text = "新規ゲーム"
-	new_button.pressed.connect(func() -> void:
-		last_centered_position = -1
-		game_state.new_game()
-	)
+	new_button.pressed.connect(func() -> void: new_game_confirm.popup_centered())
 	header.add_child(new_button)
 
 	var save_button := _make_utility_button("Save")
@@ -598,6 +606,104 @@ func _show_event(event_data: Dictionary) -> void:
 			event_overlay.visible = false
 		)
 		choice_box.add_child(button)
+
+
+func _build_gallery_overlay() -> void:
+	gallery_overlay = PanelContainer.new()
+	gallery_overlay.visible = false
+	gallery_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	gallery_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	gallery_overlay.add_theme_stylebox_override("panel", _panel_style(Color(0.05, 0.07, 0.10, 0.86), Color(0, 0, 0, 0), 0, 0))
+	add_child(gallery_overlay)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	gallery_overlay.add_child(center)
+
+	var dialog := PanelContainer.new()
+	dialog.custom_minimum_size = Vector2(520, 420)
+	dialog.add_theme_stylebox_override("panel", _panel_style(Color("#202536"), Color("#59657b"), 1, 12))
+	center.add_child(dialog)
+
+	var margin := _panel_margin(dialog, 16)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	margin.add_child(box)
+
+	var title := Label.new()
+	title.text = "回想録"
+	title.add_theme_font_size_override("font_size", 22)
+	box.add_child(title)
+
+	var subtitle := Label.new()
+	subtitle.text = "これまでに再生されたイベントの記録です。"
+	subtitle.modulate = Color(1, 1, 1, 0.56)
+	subtitle.add_theme_font_size_override("font_size", 12)
+	box.add_child(subtitle)
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 300)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(scroll)
+
+	gallery_list = VBoxContainer.new()
+	gallery_list.add_theme_constant_override("separation", 6)
+	gallery_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(gallery_list)
+
+	var close_button := _make_button("閉じる", Color("#394050"))
+	close_button.pressed.connect(func() -> void: gallery_overlay.visible = false)
+	box.add_child(close_button)
+
+
+func _show_gallery() -> void:
+	_clear_children(gallery_list)
+	var entries: Array = game_state.get_gallery_entries()
+	if entries.is_empty():
+		var empty_label := Label.new()
+		empty_label.text = "まだ記録がありません。イベントやマスを進めると、ここに記録されていきます。"
+		empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_label.modulate = Color(1, 1, 1, 0.68)
+		gallery_list.add_child(empty_label)
+	else:
+		for entry in entries:
+			gallery_list.add_child(_make_gallery_entry(entry))
+	gallery_overlay.visible = true
+	gallery_overlay.move_to_front()
+
+
+func _make_gallery_entry(entry: Dictionary) -> Control:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("#1b2431"), Color("#39475c"), 1, 8))
+
+	var margin := _panel_margin(panel, 8)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 3)
+	margin.add_child(box)
+
+	var title := Label.new()
+	title.text = String(entry.get("title", entry.get("id", "")))
+	title.add_theme_font_size_override("font_size", 15)
+	box.add_child(title)
+
+	var body := Label.new()
+	body.text = String(entry.get("body", ""))
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.modulate = Color(1, 1, 1, 0.68)
+	body.add_theme_font_size_override("font_size", 12)
+	box.add_child(body)
+	return panel
+
+
+func _build_new_game_confirm() -> void:
+	new_game_confirm = ConfirmationDialog.new()
+	new_game_confirm.title = "新規ゲーム"
+	new_game_confirm.dialog_text = "現在の進行状況は失われます。新規ゲームを開始しますか？"
+	new_game_confirm.confirmed.connect(func() -> void:
+		last_centered_position = -1
+		game_state.new_game()
+	)
+	add_child(new_game_confirm)
 
 
 func _build_orientation_overlay() -> void:
