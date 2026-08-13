@@ -3,6 +3,7 @@ extends Node
 signal changed
 signal event_requested(event_data: Dictionary)
 signal log_added(text: String)
+signal damage_popup(amount: int, target: String)
 
 const BOARD_PATH := "res://data/board.json"
 const EVENTS_PATH := "res://data/events.json"
@@ -26,12 +27,21 @@ var characters_data: Dictionary = {}
 var player: Dictionary = {}
 var battle: Dictionary = {}
 var logs: Array[String] = []
+var audio_fx: Node
 
 
 func _ready() -> void:
 	rng.randomize()
+	audio_fx = get_node_or_null("/root/AudioFx")
 	load_content()
 	new_game()
+
+
+func _play_sfx(id: String) -> void:
+	# --script によるテスト実行など、AudioFx オートロードが存在しない文脈でも
+	# 安全に無視できるようにする。
+	if audio_fx != null:
+		audio_fx.play(id)
 
 
 func load_content() -> void:
@@ -272,6 +282,8 @@ func _apply_travel_cost(space: Dictionary) -> void:
 	_apply_effects({"hp": -damage})
 	_adjust_danger(1)
 	add_log("疲労でHPを%d失いました。" % damage)
+	_play_sfx("damage")
+	damage_popup.emit(damage, "player")
 	if int(player.get("hp", 0)) <= 0:
 		_handle_defeat({"id": "exhaustion", "name": "疲労困憊"})
 
@@ -419,6 +431,7 @@ func _handle_defeat(enemy: Dictionary) -> void:
 	player["route_profile"] = "balanced"
 	battle.clear()
 	add_log("敗北。10Gを失い、拠点で目を覚ましました。")
+	_play_sfx("defeat")
 	_request_defeat_event(enemy)
 
 
@@ -519,6 +532,8 @@ func battle_flee() -> void:
 func _damage_enemy(damage: int, action_name: String) -> void:
 	battle["enemy_hp"] = max(0, int(battle.get("enemy_hp", 0)) - damage)
 	add_log("%sで %d ダメージ。" % [action_name, damage])
+	_play_sfx("hit")
+	damage_popup.emit(damage, "enemy")
 	if int(battle.get("enemy_hp", 0)) <= 0:
 		_win_battle()
 	else:
@@ -539,6 +554,8 @@ func _enemy_turn() -> void:
 	battle["guard"] = false
 	_apply_effects({"hp": -damage})
 	add_log("%s の反撃。%d ダメージ。" % [enemy.get("name", "敵"), damage])
+	_play_sfx("damage")
+	damage_popup.emit(damage, "player")
 
 	if int(player.get("hp", 0)) <= 0:
 		_handle_defeat(enemy.duplicate(true))
@@ -552,6 +569,7 @@ func _win_battle() -> void:
 	_apply_effects({"gold": gold, "resolve": resolve})
 	_adjust_danger(-1)
 	add_log("%s に勝利。%d G / 覚悟%d を獲得。" % [enemy.get("name", "敵"), gold, resolve])
+	_play_sfx("victory")
 	battle.clear()
 	var current_space := get_current_space()
 	if String(current_space.get("type", "")) == "boss" and get_next_ids(current_space).is_empty():
@@ -590,6 +608,8 @@ func _show_route_clear() -> void:
 
 func _heal(hp_amount: int, stamina_amount: int) -> void:
 	_apply_effects({"hp": hp_amount, "stamina": stamina_amount})
+	if hp_amount > 0:
+		_play_sfx("heal")
 
 
 func _apply_effects(effects: Dictionary) -> void:
@@ -603,6 +623,8 @@ func _apply_effects(effects: Dictionary) -> void:
 			player["stamina"] = clamp(int(player.get("stamina", 0)) + amount, 0, int(player.get("max_stamina", 10)))
 		elif key == "gold":
 			player["gold"] = max(0, int(player.get("gold", 0)) + amount)
+			if amount > 0:
+				_play_sfx("gold")
 		elif key == "max_hp":
 			player["max_hp"] = max(1, int(player.get("max_hp", 100)) + amount)
 		elif key == "max_stamina":
@@ -751,5 +773,6 @@ func _adjust_danger(amount: int) -> void:
 	player["danger"] = after
 	if after > before:
 		add_log("危険度 +%d  現在 %d" % [after - before, after])
+		_play_sfx("danger")
 	elif after < before:
 		add_log("危険度 -%d  現在 %d" % [before - after, after])

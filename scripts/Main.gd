@@ -2,6 +2,7 @@ extends Control
 
 const UI_FONT := preload("res://assets/fonts/NotoSansCJKjp-Regular.otf")
 const BOARD_MAP_SCRIPT := preload("res://scripts/BoardMap.gd")
+const DICE_WIDGET_SCRIPT := preload("res://scripts/DiceWidget.gd")
 const MAP_NODE_SIZE := Vector2(104, 62)
 
 const SPACE_COLORS := {
@@ -25,12 +26,22 @@ var map_panel: PanelContainer
 var hud_panel: VBoxContainer
 var last_centered_position := -1
 var map_dragging := false
+var map_scroll_tween: Tween
+var bar_tweens: Dictionary = {}
+var flash_tweens: Dictionary = {}
+
+var dice_widget
+var dice_rng := RandomNumberGenerator.new()
+var input_lock_overlay: Control
+var input_locked := false
+var audio_fx: Node
 
 var location_label: Label
 var route_stage_label: Label
 var meta_label: Label
 var gold_label: Label
 var hp_bar: ProgressBar
+var hp_bar_row: Control
 var stamina_bar: ProgressBar
 var stat_labels: Dictionary = {}
 var narration_label: RichTextLabel
@@ -62,13 +73,21 @@ var game_state
 
 
 func _ready() -> void:
+	dice_rng.randomize()
+	audio_fx = get_node_or_null("/root/AudioFx")
 	game_state = get_node("/root/GameState")
 	game_state.changed.connect(_render)
 	game_state.event_requested.connect(_show_event)
+	game_state.damage_popup.connect(_on_damage_popup)
 	_apply_ui_theme()
 	_build_ui()
 	_apply_responsive_layout()
 	_render()
+
+
+func _play_sfx(id: String) -> void:
+	if audio_fx != null:
+		audio_fx.play(id)
 
 
 func _notification(what: int) -> void:
@@ -118,6 +137,7 @@ func _build_ui() -> void:
 	_build_gallery_overlay()
 	_build_new_game_confirm()
 	_build_orientation_overlay()
+	_build_input_lock_overlay()
 
 
 func _build_top_bar() -> Control:
@@ -256,7 +276,8 @@ func _build_status_card() -> Control:
 	box.add_child(meta_label)
 
 	hp_bar = _make_bar(Color("#d76f57"))
-	box.add_child(_make_labeled_bar("HP", hp_bar))
+	hp_bar_row = _make_labeled_bar("HP", hp_bar)
+	box.add_child(hp_bar_row)
 	stamina_bar = _make_bar(Color("#63a7b4"))
 	box.add_child(_make_labeled_bar("ST", stamina_bar))
 
@@ -279,11 +300,20 @@ func _build_action_card() -> Control:
 	box.add_theme_constant_override("separation", 6)
 	margin.add_child(box)
 
+	var advance_row := HBoxContainer.new()
+	advance_row.add_theme_constant_override("separation", 8)
+	box.add_child(advance_row)
+
+	dice_widget = DICE_WIDGET_SCRIPT.new()
+	dice_widget.custom_minimum_size = Vector2(44, 44)
+	dice_widget.modulate = Color(1, 1, 1, 0.35)
+	advance_row.add_child(dice_widget)
+
 	advance_button = _make_button("次へ進む", Color("#d77555"), true)
 	advance_button.custom_minimum_size = Vector2(0, 44)
 	advance_button.add_theme_font_size_override("font_size", 19)
-	advance_button.pressed.connect(game_state.advance_route)
-	box.add_child(advance_button)
+	advance_button.pressed.connect(_on_advance_pressed)
+	advance_row.add_child(advance_button)
 
 	var rest_button := _make_button("休息", Color("#5c95a1"))
 	rest_button.pressed.connect(game_state.rest)
@@ -417,8 +447,8 @@ func _render() -> void:
 		int(p.get("route_score", 0))
 	]
 	gold_label.text = "%d G" % int(p.get("gold", 0))
-	_set_bar(hp_bar, int(p.get("hp", 0)), int(p.get("max_hp", 100)))
-	_set_bar(stamina_bar, int(p.get("stamina", 0)), int(p.get("max_stamina", 10)))
+	_set_bar(hp_bar, int(p.get("hp", 0)), int(p.get("max_hp", 100)), "hp")
+	_set_bar(stamina_bar, int(p.get("stamina", 0)), int(p.get("max_stamina", 10)), "stamina")
 	_set_stat_text("str", "筋力", int(stats.get("str", 0)))
 	_set_stat_text("charm", "魅力", int(stats.get("charm", 0)))
 	_set_stat_text("mind", "知性", int(stats.get("mind", 0)))
@@ -489,7 +519,7 @@ func _render_route_choices() -> void:
 			button.text = "選択中\n%s" % label
 			button.disabled = true
 		else:
-			button.pressed.connect(func() -> void: game_state.choose_route(next_id))
+			button.pressed.connect(func() -> void: _on_route_chosen(next_id))
 		route_box.add_child(button)
 
 
@@ -577,8 +607,10 @@ func _build_event_overlay() -> void:
 
 func _show_event(event_data: Dictionary) -> void:
 	event_overlay.visible = true
+	event_overlay.modulate = Color(1, 1, 1, 0)
 	event_overlay.move_to_front()
 	orientation_overlay.move_to_front()
+	_animate_event_overlay_in()
 	event_title.text = String(event_data.get("title", "イベント"))
 	event_body.text = String(event_data.get("body", ""))
 	_clear_children(choice_box)
@@ -603,7 +635,7 @@ func _show_event(event_data: Dictionary) -> void:
 		var button := _make_button(String(choice.get("label", "選択")), Color("#8d65b7"), true)
 		button.pressed.connect(func() -> void:
 			game_state.apply_choice(choice)
-			event_overlay.visible = false
+			_hide_event()
 		)
 		choice_box.add_child(button)
 
@@ -706,6 +738,98 @@ func _build_new_game_confirm() -> void:
 	add_child(new_game_confirm)
 
 
+func _build_input_lock_overlay() -> void:
+	input_lock_overlay = Control.new()
+	input_lock_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	input_lock_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	input_lock_overlay.visible = false
+	add_child(input_lock_overlay)
+
+
+func _on_advance_pressed() -> void:
+	if input_locked:
+		return
+	if game_state.is_in_battle() or game_state.needs_route_choice() or bool(game_state.player.get("finished", false)):
+		return
+	await _play_dice_roll()
+	game_state.advance_route()
+
+
+func _on_route_chosen(next_id: int) -> void:
+	if input_locked:
+		return
+	await _play_dice_roll()
+	game_state.choose_route(next_id)
+
+
+func _play_dice_roll() -> void:
+	input_locked = true
+	input_lock_overlay.visible = true
+	input_lock_overlay.move_to_front()
+	dice_widget.modulate = Color(1, 1, 1, 1)
+
+	var final_value := dice_rng.randi_range(1, 6)
+	var ticks := 9
+	for i in range(ticks):
+		dice_widget.set_value(dice_rng.randi_range(1, 6))
+		_play_sfx("dice_tick")
+		var wait_time: float = lerpf(0.045, 0.12, float(i) / float(ticks - 1))
+		await get_tree().create_timer(wait_time).timeout
+
+	dice_widget.set_value(final_value)
+	_play_sfx("dice_land")
+	_bounce(dice_widget)
+
+	await get_tree().create_timer(0.3).timeout
+	dice_widget.modulate = Color(1, 1, 1, 0.35)
+	input_lock_overlay.visible = false
+	input_locked = false
+
+
+func _bounce(control: Control) -> void:
+	control.pivot_offset = control.size / 2.0
+	control.scale = Vector2(1.35, 1.35)
+	var tween := create_tween()
+	tween.tween_property(control, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+
+func _shake(control: Control, strength: float, duration: float) -> void:
+	var base_position := control.position
+	var steps := 6
+	var tween := create_tween()
+	for i in range(steps):
+		var offset := Vector2(dice_rng.randf_range(-strength, strength), dice_rng.randf_range(-strength, strength))
+		tween.tween_property(control, "position", base_position + offset, duration / steps)
+	tween.tween_property(control, "position", base_position, duration / steps)
+
+
+func _on_damage_popup(amount: int, target: String) -> void:
+	if target == "enemy":
+		var origin: Vector2 = battle_body.global_position + Vector2(battle_body.size.x * 0.5, -6.0)
+		_spawn_damage_label(amount, origin, true)
+		_shake(battle_panel, 5.0, 0.22)
+	else:
+		var origin: Vector2 = hp_bar.global_position + Vector2(hp_bar.size.x * 0.5, -4.0)
+		_spawn_damage_label(amount, origin, false)
+		_shake(hp_bar_row, 5.0, 0.22)
+
+
+func _spawn_damage_label(amount: int, origin: Vector2, is_enemy_target: bool) -> void:
+	var label := Label.new()
+	label.text = "%d" % amount
+	label.add_theme_font_size_override("font_size", 22 if is_enemy_target else 20)
+	label.modulate = Color("#ffd76e") if is_enemy_target else Color("#ff6f6f")
+	label.z_index = 100
+	label.top_level = true
+	label.position = origin + Vector2(dice_rng.randf_range(-14.0, 14.0), -10.0)
+	add_child(label)
+
+	var tween := create_tween()
+	tween.tween_property(label, "position:y", label.position.y - 42.0, 0.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.45).set_delay(0.15)
+	tween.tween_callback(label.queue_free)
+
+
 func _build_orientation_overlay() -> void:
 	orientation_overlay = PanelContainer.new()
 	orientation_overlay.visible = false
@@ -752,11 +876,21 @@ func _apply_responsive_layout() -> void:
 	event_image.custom_minimum_size = Vector2(0, 150 if portrait else 190)
 	orientation_overlay.visible = false
 	last_centered_position = -1
-	_center_current_space(int(game_state.player.get("position", 0)))
+	_center_current_space(int(game_state.player.get("position", 0)), false)
+
+
+func _animate_event_overlay_in() -> void:
+	event_dialog.pivot_offset = event_dialog.size / 2.0
+	event_dialog.scale = Vector2(0.92, 0.92)
+	var tween := create_tween()
+	tween.tween_property(event_overlay, "modulate:a", 1.0, 0.18)
+	tween.parallel().tween_property(event_dialog, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func _hide_event() -> void:
-	event_overlay.visible = false
+	var tween := create_tween()
+	tween.tween_property(event_overlay, "modulate:a", 0.0, 0.15)
+	tween.tween_callback(func() -> void: event_overlay.visible = false)
 
 
 func _on_map_pan_input(event: InputEvent) -> void:
@@ -828,25 +962,55 @@ func _on_adult_toggled(enabled: bool) -> void:
 	game_state.set_adult_content_enabled(enabled)
 
 
-func _center_current_space(position: int) -> void:
+func _center_current_space(position: int, animate: bool = true) -> void:
 	if position == last_centered_position:
 		return
 	last_centered_position = position
 	var space: Dictionary = game_state.get_space_by_id(position)
 	if space.is_empty():
 		return
-	call_deferred("_apply_map_center", board_map.get_space_center(space))
+	call_deferred("_apply_map_center", board_map.get_space_center(space), animate)
 
 
-func _apply_map_center(center: Vector2) -> void:
+func _apply_map_center(center: Vector2, animate: bool = true) -> void:
 	var view_size := board_scroll.size
-	board_scroll.scroll_horizontal = maxi(0, int(center.x - view_size.x * 0.42))
-	board_scroll.scroll_vertical = maxi(0, int(center.y - view_size.y * 0.58))
+	var target_h := maxi(0, int(center.x - view_size.x * 0.42))
+	var target_v := maxi(0, int(center.y - view_size.y * 0.58))
+
+	if map_scroll_tween != null and map_scroll_tween.is_valid():
+		map_scroll_tween.kill()
+
+	if not animate:
+		board_scroll.scroll_horizontal = target_h
+		board_scroll.scroll_vertical = target_v
+		return
+
+	map_scroll_tween = create_tween()
+	map_scroll_tween.set_parallel(true)
+	map_scroll_tween.tween_property(board_scroll, "scroll_horizontal", target_h, 0.45).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	map_scroll_tween.tween_property(board_scroll, "scroll_vertical", target_v, 0.45).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 
-func _set_bar(bar: ProgressBar, value: int, max_value: int) -> void:
+func _set_bar(bar: ProgressBar, value: int, max_value: int, key: String) -> void:
 	bar.max_value = max(1, max_value)
-	bar.value = clamp(value, 0, max_value)
+	var target_value: float = clamp(value, 0, max_value)
+	if is_equal_approx(bar.value, target_value):
+		return
+
+	var going_down := target_value < bar.value
+	if bar_tweens.has(key) and bar_tweens[key] != null and bar_tweens[key].is_valid():
+		bar_tweens[key].kill()
+	var tween := create_tween()
+	bar_tweens[key] = tween
+	tween.tween_property(bar, "value", target_value, 0.32).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+	var flash_color := Color(1.0, 0.4, 0.4, 1.0) if going_down else Color(0.55, 1.0, 0.65, 1.0)
+	if flash_tweens.has(key) and flash_tweens[key] != null and flash_tweens[key].is_valid():
+		flash_tweens[key].kill()
+	bar.modulate = flash_color
+	var flash_tween := create_tween()
+	flash_tweens[key] = flash_tween
+	flash_tween.tween_property(bar, "modulate", Color(1, 1, 1, 1), 0.4).set_trans(Tween.TRANS_CUBIC)
 
 
 func _set_stat_text(key: String, title: String, value: int) -> void:
@@ -932,6 +1096,7 @@ func _make_button(text: String, color: Color, emphasized: bool = false) -> Butto
 	button.add_theme_stylebox_override("hover", _button_style(color.lightened(0.08), emphasized, 8))
 	button.add_theme_stylebox_override("pressed", _button_style(color.darkened(0.08), emphasized, 8))
 	button.add_theme_stylebox_override("disabled", _button_style(Color("#2b313c"), false, 8))
+	button.pressed.connect(func() -> void: _play_sfx("decide"))
 	return button
 
 
