@@ -208,10 +208,9 @@ func _build_top_bar() -> Control:
 
 	var load_button := _make_utility_button("Load")
 	load_button.pressed.connect(func() -> void:
-		last_centered_position = -1
-		piece_target_id = -1
-		piece_hop_queue.clear()
 		game_state.load_game()
+		_rebuild_board_map()
+		_render()
 	)
 	header.add_child(load_button)
 	return header
@@ -240,12 +239,21 @@ func _build_map_panel() -> Control:
 	board_margin.add_child(board_scroll)
 
 	board_map = BOARD_MAP_SCRIPT.new()
-	board_map.configure(game_state.board_data)
 	board_map.mouse_filter = Control.MOUSE_FILTER_PASS
 	board_map.gui_input.connect(_on_map_pan_input)
 	board_scroll.add_child(board_map)
 
+	_rebuild_board_map()
+	return map_panel
+
+
+func _rebuild_board_map() -> void:
+	# 盤面は New/Load のたびに変わりうる(毎回ランダム生成されるため)ので、
+	# マスのボタンと駒をそのつど作り直す。
+	board_map.configure(game_state.board_data)
+	_clear_children(board_map)
 	board_buttons.clear()
+
 	for space in game_state.get_spaces():
 		var button := _make_map_node_button(space)
 		button.position = board_map.get_space_position(space)
@@ -259,7 +267,10 @@ func _build_map_panel() -> Control:
 	piece_widget.size = PIECE_SIZE
 	piece_widget.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	board_map.add_child(piece_widget)
-	return map_panel
+
+	piece_target_id = -1
+	piece_hop_queue.clear()
+	last_centered_position = -1
 
 
 func _build_hud_panel() -> Control:
@@ -790,10 +801,9 @@ func _build_new_game_confirm() -> void:
 	new_game_confirm.title = "新規ゲーム"
 	new_game_confirm.dialog_text = "現在の進行状況は失われます。新規ゲームを開始しますか？"
 	new_game_confirm.confirmed.connect(func() -> void:
-		last_centered_position = -1
-		piece_target_id = -1
-		piece_hop_queue.clear()
 		game_state.new_game()
+		_rebuild_board_map()
+		_render()
 	)
 	add_child(new_game_confirm)
 

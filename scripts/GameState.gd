@@ -6,6 +6,7 @@ signal log_added(text: String)
 signal damage_popup(amount: int, target: String)
 signal piece_moved(space_id: int)
 
+const BOARD_GENERATOR := preload("res://scripts/BoardGenerator.gd")
 const BOARD_PATH := "res://data/board.json"
 const EVENTS_PATH := "res://data/events.json"
 const ENEMIES_PATH := "res://data/enemies.json"
@@ -21,7 +22,8 @@ const ROUTE_PROFILES := {
 }
 
 var rng := RandomNumberGenerator.new()
-var board_data: Dictionary = {}
+var board_theme: Dictionary = {} # data/board.json: 盤面をランダム生成するための設定
+var board_data: Dictionary = {} # 実際にプレイ中の盤面(new_game() のたびに生成し直す)
 var events_data: Dictionary = {}
 var enemies_data: Dictionary = {}
 var characters_data: Dictionary = {}
@@ -47,7 +49,7 @@ func _play_sfx(id: String) -> void:
 
 
 func load_content() -> void:
-	board_data = _load_json(BOARD_PATH, {"spaces": []})
+	board_theme = _load_json(BOARD_PATH, {})
 	events_data = _load_json(EVENTS_PATH, {"events": []})
 	enemies_data = _load_json(ENEMIES_PATH, {"enemies": []})
 	characters_data = _load_json(CHARACTERS_PATH, {"player": {}})
@@ -71,7 +73,11 @@ func _load_json(path: String, fallback: Dictionary) -> Dictionary:
 	return parsed
 
 
-func new_game() -> void:
+func new_game(forced_board: Dictionary = {}) -> void:
+	# 毎回ランダムに盤面を生成し直す(桃鉄のようなマス目が詰まったボードにするため)。
+	# forced_board はテストや特殊用途で決まった盤面を差し込みたい場合に使う。
+	board_data = forced_board if not forced_board.is_empty() else BOARD_GENERATOR.generate(board_theme, rng)
+
 	var base: Dictionary = characters_data.get("player", {})
 	var stats: Dictionary = base.get("stats", {"str": 5, "charm": 5, "mind": 5, "resolve": 0}).duplicate(true)
 	if stats.has("bond") and not stats.has("resolve"):
@@ -687,7 +693,9 @@ func save_game() -> void:
 	if file == null:
 		add_log("セーブに失敗しました。")
 		return
-	file.store_string(JSON.stringify({"player": player}, "\t"))
+	# 盤面は起動のたびにランダム生成し直すため、ロード後も同じ盤面に戻れるよう
+	# player と一緒に board_data(生成済みの実際の盤面)も保存する。
+	file.store_string(JSON.stringify({"player": player, "board": board_data}, "\t"))
 	add_log("セーブしました。")
 	changed.emit()
 
@@ -706,6 +714,10 @@ func load_game() -> void:
 
 	var parsed = JSON.parse_string(file.get_as_text())
 	if typeof(parsed) == TYPE_DICTIONARY and parsed.has("player"):
+		if typeof(parsed.get("board")) == TYPE_DICTIONARY and not parsed["board"].is_empty():
+			board_data = parsed["board"]
+		# 盤面情報の無い古いセーブの場合は、現在生成済みの盤面をそのまま使う
+		# (_ensure_player_route_fields が position の不整合を start_id に補正する)。
 		player = parsed["player"]
 		_ensure_player_route_fields()
 		battle.clear()

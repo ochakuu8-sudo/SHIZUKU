@@ -1,43 +1,68 @@
 {
-  "width": 22,
-  "height": 11,
-  "start_id": 0,
-  "spaces": [
-    {"id": 0, "x": 0, "y": 5, "type": "start", "label": "START", "description": "旅の始まり。横長のルートマップを進みます。", "next_ids": [1]},
-    {"id": 1, "x": 1, "y": 5, "type": "train", "label": "基礎", "stat": "all", "description": "旅立ち前の基礎トレーニング。", "next_ids": [2]},
-    {"id": 2, "x": 2, "y": 5, "type": "event", "label": "導入", "category": "story", "description": "長い旅の目標が見えてきます。", "next_ids": [3]},
-    {"id": 3, "x": 3, "y": 5, "type": "fork", "label": "三叉路", "description": "街道、中央道、森道から進むルートを選びます。", "next_ids": [10, 20, 30]},
-
-    {"id": 10, "x": 4, "y": 3, "type": "event", "label": "街道", "route_label": "街道へ", "route_profile": "safe", "category": "daily", "description": "小さな発見が多い安全寄りの道。", "next_ids": [11]},
-    {"id": 11, "x": 5, "y": 2, "type": "train", "label": "魅力", "stat": "charm", "description": "人目のある道で立ち回りを磨きます。", "next_ids": [12]},
-    {"id": 12, "x": 6, "y": 2, "type": "shop", "label": "露店", "description": "道中の露店で少額のゴールドを得ます。", "next_ids": [13]},
-    {"id": 13, "x": 7, "y": 3, "type": "event", "label": "覚悟", "category": "resolve", "description": "一人旅の目的を見つめ直すタイミング。", "next_ids": [40]},
-
-    {"id": 20, "x": 4, "y": 5, "type": "train", "label": "中央道", "route_label": "中央道へ", "route_profile": "training", "stat": "str", "description": "安定して進みながら筋力を伸ばす道。", "next_ids": [21]},
-    {"id": 21, "x": 5, "y": 5, "type": "encounter", "label": "探索", "description": "道中で敵と遭遇します。", "next_ids": [22]},
-    {"id": 22, "x": 6, "y": 5, "type": "rest", "label": "野営", "description": "野営してHPとスタミナを回復します。", "next_ids": [23]},
-    {"id": 23, "x": 7, "y": 5, "type": "event", "label": "発見", "category": "daily", "description": "通常イベント。", "next_ids": [40]},
-
-    {"id": 30, "x": 4, "y": 7, "type": "encounter", "label": "森道", "route_label": "森道へ", "route_profile": "danger", "strong": true, "description": "危険はあるが戦闘経験を得やすい道。", "next_ids": [31]},
-    {"id": 31, "x": 5, "y": 8, "type": "rest", "label": "泉", "description": "森の泉で休息します。", "next_ids": [32]},
-    {"id": 32, "x": 6, "y": 8, "type": "event", "label": "祠", "category": "resolve", "description": "危険な森道で覚悟を固めます。", "next_ids": [33]},
-    {"id": 33, "x": 7, "y": 7, "type": "train", "label": "知性", "stat": "mind", "description": "道を読み、判断力を鍛えます。", "next_ids": [40]},
-
-    {"id": 40, "x": 9, "y": 5, "type": "fork", "label": "合流", "description": "前半ルートが合流します。峠か川辺を選びます。", "next_ids": [50, 60]},
-    {"id": 50, "x": 10, "y": 3, "type": "shop", "label": "峠市", "route_label": "峠へ", "route_profile": "reward", "description": "峠の市で準備を整えます。", "next_ids": [51]},
-    {"id": 51, "x": 11, "y": 2, "type": "event", "label": "覚悟", "category": "resolve", "description": "景色を見ながら旅の目的を確かめます。", "next_ids": [52]},
-    {"id": 52, "x": 12, "y": 3, "type": "train", "label": "魅力", "stat": "charm", "description": "旅先での振る舞いを磨きます。", "next_ids": [70]},
-
-    {"id": 60, "x": 10, "y": 7, "type": "encounter", "label": "川辺", "route_label": "川辺へ", "route_profile": "danger", "strong": true, "description": "強めの敵が出る遠回りの道。", "next_ids": [61]},
-    {"id": 61, "x": 11, "y": 8, "type": "rest", "label": "浅瀬", "description": "水辺で休んで立て直します。", "next_ids": [62]},
-    {"id": 62, "x": 12, "y": 7, "type": "train", "label": "総合", "stat": "all", "description": "複数能力が少し伸びます。", "next_ids": [70]},
-
-    {"id": 70, "x": 14, "y": 5, "type": "event", "label": "転機", "category": "story", "description": "終盤の方針を決めるストーリーイベント。", "next_ids": [71]},
-    {"id": 71, "x": 15, "y": 5, "type": "fork", "label": "終盤分岐", "description": "試練前の最後の進み方を選びます。", "next_ids": [80, 85]},
-    {"id": 80, "x": 16, "y": 4, "type": "encounter", "label": "強敵", "route_label": "鍛えて挑む", "route_profile": "danger", "strong": true, "description": "強敵と戦い、成果を伸ばしてから試練へ向かいます。", "next_ids": [81]},
-    {"id": 81, "x": 17, "y": 4, "type": "shop", "label": "報酬", "description": "戦利品としてゴールドを得ます。", "next_ids": [90]},
-    {"id": 85, "x": 16, "y": 6, "type": "rest", "label": "休息", "route_label": "整えて挑む", "route_profile": "recovery", "description": "体勢を整えてから試練へ向かいます。", "next_ids": [86]},
-    {"id": 86, "x": 17, "y": 6, "type": "event", "label": "準備", "category": "daily", "description": "最後に気持ちを整えるイベント。", "next_ids": [90]},
-    {"id": 90, "x": 19, "y": 5, "type": "boss", "label": "試練", "description": "このルートの終点。育成成果を試すボス戦です。", "next_ids": []}
-  ]
+  "grid": {
+    "columns": 15,
+    "rows": 8,
+    "min_nodes_per_column": 2,
+    "max_nodes_per_column": 4,
+    "fork_chance": 0.45,
+    "extra_edge_chance": 0.15
+  },
+  "start": {
+    "label": "START",
+    "description": "旅の始まり。マス目が入り組んだルートを進みます。"
+  },
+  "boss": {
+    "labels": ["試練の間", "最終決戦", "王の間", "頂の祭壇"],
+    "description": "ルートの終点で大きな試練が始まります。"
+  },
+  "route_profiles": ["safe", "training", "danger", "reward", "recovery"],
+  "type_weights": {
+    "train": 25,
+    "event": 22,
+    "encounter": 25,
+    "rest": 14,
+    "shop": 14
+  },
+  "tiles": {
+    "train": {
+      "labels": ["鍛錬場", "道場", "修練の道", "訓練所", "鍛冶の道", "稽古場"],
+      "stats": ["str", "charm", "mind", "all"],
+      "descriptions": [
+        "旅の途中で体を鍛えました。",
+        "先達に稽古をつけてもらいました。",
+        "地道な鍛錬が力になっていきます。"
+      ]
+    },
+    "event": {
+      "labels": ["露店街", "旅人の噂", "静かな道", "賑わう市場", "古い祠", "峠の茶屋"],
+      "categories": ["daily", "resolve", "story"],
+      "descriptions": [
+        "小さな出来事が旅を彩ります。",
+        "道中でふと足を止めました。",
+        "旅先で新しい話を耳にしました。"
+      ]
+    },
+    "encounter": {
+      "labels": ["獣道", "伏兵", "荒れ地", "隘路", "森の奥", "崩れた橋"],
+      "strong_chance": 0.3,
+      "descriptions": [
+        "道中で敵の気配が近づいてきます。",
+        "行く手を阻む何かが潜んでいます。"
+      ]
+    },
+    "rest": {
+      "labels": ["泉", "木陰", "茶屋", "野営地", "石畳の広場", "見晴らし台"],
+      "descriptions": [
+        "ひと息ついて体勢を立て直しました。",
+        "静かな場所で旅の疲れを癒します。"
+      ]
+    },
+    "shop": {
+      "labels": ["露店", "商店", "行商", "市場", "宝箱", "旅の道具屋"],
+      "descriptions": [
+        "旅の助けになるものを手に入れました。",
+        "掘り出し物を見つけました。"
+      ]
+    }
+  }
 }

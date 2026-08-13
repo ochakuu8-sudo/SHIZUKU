@@ -1,43 +1,51 @@
 # Data Guide
 
-## `data/board.json`
+## `data/board.json`(盤面の自動生成設定)
 
-盤面のマスを定義します。`width` と `height` がグリッドサイズ、各マスの `x` と `y` が表示位置です。進行順は各マスの `next_ids` で定義します。「次へ進む」を押すとサイコロ(1〜6)を振り、出目の数だけ`next_ids`を辿って一本道を進みます。途中で `next_ids` が2つ以上あるマス(分岐)に着くと、出目が余っていてもそこで足を止めてルート選択になります。ルートを選ぶと、余っていたマス数はそのまま消化されて選んだ先へ進み続けます。サイコロの出目で通過しただけのマス(止まらなかったマス)では、育成/イベント/戦闘などのマス効果は発生しません(移動コストや危険度の変化はマスごとに発生します)。実際に足を止めたマスでだけ、マス効果とイベント絵/テキストが再生されます。
+盤面のマス配置そのものはもう `board.json` に直接書きません。**「次へ進む」でサイコロ(1〜6)を振り、出目の数だけ`next_ids`を辿って一本道を進む**」「途中で分岐(`next_ids` が2つ以上あるマス)に着いたら、出目が余っていてもそこで足を止めてルート選択になり、選ぶと残りの出目でそのまま進み続ける」という進行ルールは以前と同じですが、**盤面のグラフそのものは `New` を押すたび(=`GameState.new_game()`のたびに) `scripts/BoardGenerator.gd` が `data/board.json` の設定に従ってランダムに作り直します**。桃鉄のようにマス目がグリッド状に詰まり、線が交差・合流する盤面になるようにしてあります。
 
-現在の初期盤面は 22x11 グリッドです。STARTから横長に進み、複数回の分岐と合流を経て最後にボスへ向かうルート型マップです。画面より広い盤面は、ゲーム内のマップエリアをスクロールして見渡せます。
+サイコロの出目で通過しただけのマス(止まらなかったマス)では、育成/イベント/戦闘などのマス効果は発生しません(移動コストや危険度の変化はマスごとに発生します)。実際に足を止めたマスでだけ、マス効果とイベント絵/テキストが再生されます。`fork` 扱いになる分岐マスとルート終端(`next_ids` が空のマス。ボス)は、出目が余っていても必ずそこで足を止めます。
 
-主なフィールド:
+セーブデータには、そのとき生成された盤面自体も一緒に保存されます。ロードすると、セーブ時と同じ盤面に復元されます(ロードのたびに新しい盤面が生成されるわけではありません)。
 
-- `id`: マスID。プレイヤー位置や `next_ids` の参照先になります。
-- `x`, `y`: グリッド上の表示位置です。
-- `type`: マス効果の種類です。
-- `next_ids`: 次に進めるマスIDの配列です。2つ以上あると分岐選択になります。
-- `route_label`: 分岐選択ボタンに表示する名前です。省略時は `label` を使います。
-- `route_profile`: 分岐ルートの性格です。`safe`、`training`、`danger`、`reward`、`recovery` を指定できます。指定したルート特性は次の分岐まで持続します。
-- `strong`: `encounter` で `true` にすると強めの敵が出やすくなり、移動時のスタミナ消費も増えます。
-- `description`: マスに停止した時のイベント本文として使われます。
-- `image_path`: マスに停止した時のイベント絵です。省略時は仮ビジュアルが自動表示されます。
+### `board.json` の主なフィールド
 
-主な `type`:
+```json
+{
+  "grid": {
+    "columns": 15,
+    "rows": 8,
+    "min_nodes_per_column": 2,
+    "max_nodes_per_column": 4,
+    "fork_chance": 0.45,
+    "extra_edge_chance": 0.15
+  },
+  "start": { "label": "START", "description": "..." },
+  "boss": { "labels": ["試練の間", "..."], "description": "..." },
+  "route_profiles": ["safe", "training", "danger", "reward", "recovery"],
+  "type_weights": { "train": 25, "event": 22, "encounter": 25, "rest": 14, "shop": 14 },
+  "tiles": {
+    "train":     { "labels": [...], "stats": ["str", "charm", "mind", "all"], "descriptions": [...] },
+    "event":     { "labels": [...], "categories": ["daily", "resolve", "story"], "descriptions": [...] },
+    "encounter": { "labels": [...], "strong_chance": 0.3, "descriptions": [...] },
+    "rest":      { "labels": [...], "descriptions": [...] },
+    "shop":      { "labels": [...], "descriptions": [...] }
+  }
+}
+```
 
-- `start`: 拠点
-- `fork`: 分岐点
-- `train`: 自動トレーニング
-- `event`: イベント再生
-- `encounter`: 通常戦闘
-- `rest`: 回復
-- `shop`: ゴールド獲得
-- `boss`: ボス戦
+- `grid.columns` / `grid.rows`: 盤面のマス目の列数・行数。左端の列(x=0)が拠点、右端の列がボスの1マスだけになり、間の各列に `min_nodes_per_column`〜`max_nodes_per_column` 個のマスをランダムなyに配置します。
+- `grid.fork_chance`: 各マスが次の列の2マスにつながる(=分岐になる)確率。
+- `grid.extra_edge_chance`: 密度を上げるための追加の交差リンクが生える確率。
+- `start` / `boss`: 拠点とボスマスの見た目(ラベル・本文)。ボスは `labels` からランダムに1つ選ばれます。
+- `route_profiles`: 分岐先に割り振るルート特性のプール。分岐するマスの行き先ごとに、ここから重複しないよう順番に割り当てます(`safe`、`training`、`danger`、`reward`、`recovery` の意味は元々の設計と同じです)。
+- `type_weights`: 拠点/ボス以外のマスの種類(`train`/`event`/`encounter`/`rest`/`shop`)の抽選重み。
+- `tiles.<type>.labels` / `descriptions`: その種類のマスのラベルと本文をランダムに選ぶための候補プール。
+- `tiles.train.stats`: 育成マスで伸ばすステータス(`str`/`charm`/`mind`/`all`)の候補。
+- `tiles.event.categories`: イベントマスで使う `data/events.json` のカテゴリ(`daily`/`resolve`/`story`)の候補。
+- `tiles.encounter.strong_chance`: 遭遇マスが強敵ルート(`strong: true`)になる確率。
 
-足を止めたマスは、イベント絵とテキストを表示します。移動時には基本的に1マスごとにスタミナを1消費し、`strong` ルートでは2消費します(通過しただけのマスでも消費します)。スタミナが足りない場合は疲労ダメージを受けます。ルート特性によって、消費、危険度、育成量、回復量、ゴールド、戦闘報酬が変化します。`event` マスでは `category` が `data/events.json` のイベントカテゴリと対応し、選択肢つきイベントを再生します。それ以外のマスは、マス効果を処理したうえで `description` を使った到着シーンを表示します。ただし `fork`(分岐)とルート終端(`next_ids` が空のマス、通常は `boss`)は、サイコロの出目が余っていても必ずそこで足を止めます。
-
-主な `route_profile`:
-
-- `safe`: 移動消費と危険度を抑える安全寄りの道です。
-- `training`: トレーニング効果が上がる育成寄りの道です。
-- `danger`: 危険度と敵の強さが上がる代わりに、戦闘報酬と踏破評価が伸びます。
-- `reward`: ゴールド報酬が伸びる道です。
-- `recovery`: 回復量が上がり、危険度を下げやすい道です。
+盤面の見た目やバランスを変えたい場合は、これらの数値・候補プールを編集してください。特定の固定レイアウトが必要な場合は `scripts/BoardGenerator.gd` の `generate()` を直接差し替えることもできます。
 
 ## `data/events.json`
 
