@@ -6,10 +6,14 @@ extends RefCounted
 ##
 ## 生成方式:
 ## - 盤面を columns x rows の格子とし、格子点(x, y)がそのままマスになる(間引きしない)。
-## - 各マスは右隣・下隣の候補との間で、確率的に道(辺)を生成する。
-##   道は双方向につながる(A→Bだけでなく B→A の next_ids にも入る)。
-## - それだけでは盤面が分断されることがあるため、スタートから辿り着けない
-##   マスが無くなるまで、救済の道を追加してつなぎ直す。
+## - まず「ランダム全域木(スパニングツリー)」を1本だけ生成して全マスをつなぐ。
+##   これにより盤面は基本的に行き止まりの無い一本道の集合になり、
+##   分岐(選択を迫られるマス)は木が枝分かれした場所だけになる。
+##   各辺を独立確率で抽選する方式より、分岐の頻度をずっと少なく・
+##   予測しやすくコントロールできる。
+## - その上で、木に含まれなかった格子上の辺のうち、ごく一部だけを
+##   `extra_link_ratio` に従って抽選で追加し、たまにショートカット/
+##   ループができる程度の変化を加える。
 ## - 開始マスは左上、ボスはスタートからグラフ上の距離が最も遠いマスに置く。
 
 
@@ -17,22 +21,16 @@ static func generate(theme: Dictionary, rng: RandomNumberGenerator) -> Dictionar
 	var grid: Dictionary = theme.get("grid", {})
 	var columns: int = maxi(3, int(grid.get("columns", 9)))
 	var rows: int = maxi(3, int(grid.get("rows", 7)))
-	var edge_keep_chance: float = clampf(float(grid.get("edge_keep_chance", 0.62)), 0.05, 1.0)
+	var extra_link_ratio: float = clampf(float(grid.get("extra_link_ratio", 0.05)), 0.0, 1.0)
 
 	var neighbors: Dictionary = {} # id -> Array[int] (双方向のつながり)
 	for y in range(rows):
 		for x in range(columns):
 			neighbors[_id_at(x, y, columns)] = []
 
-	for y in range(rows):
-		for x in range(columns):
-			if x + 1 < columns and rng.randf() <= edge_keep_chance:
-				_link(neighbors, _id_at(x, y, columns), _id_at(x + 1, y, columns))
-			if y + 1 < rows and rng.randf() <= edge_keep_chance:
-				_link(neighbors, _id_at(x, y, columns), _id_at(x, y + 1, columns))
-
 	var start_id := _id_at(0, 0, columns)
-	_ensure_connected(neighbors, start_id, columns, rows, rng)
+	_carve_spanning_tree(neighbors, start_id, columns, rows, rng)
+	_add_extra_links(neighbors, columns, rows, extra_link_ratio, rng)
 
 	var distances := _bfs_distances(neighbors, start_id)
 	var boss_id := _pick_farthest(distances, columns, rows)
@@ -91,48 +89,61 @@ static func _grid_neighbors_of(id: int, columns: int, rows: int) -> Array:
 	return result
 
 
-static func _ensure_connected(neighbors: Dictionary, start_id: int, columns: int, rows: int, rng: RandomNumberGenerator) -> void:
-	var total: int = columns * rows
-
-	# まず、道が1本も残らなかったマス(スタート自身を含む)を直接救済する。
-	# これを先にやらないと、スタートが孤立したまま偶然つながるのを運任せにしてしまう。
-	for id in neighbors.keys():
-		if not neighbors[id].is_empty():
-			continue
-		var candidates := _grid_neighbors_of(int(id), columns, rows)
-		if candidates.is_empty():
-			continue
-		var target: int = candidates[rng.randi_range(0, candidates.size() - 1)]
-		_link(neighbors, int(id), target)
-
-	# その上で、複数の孤立した島ができていないか(スタートから辿り着けるか)を
-	# BFSで確認し、辿り着けないマスがあれば繰り返しつなぎ直す。
-	for attempt in range(total):
-		var reached := _bfs_reachable(neighbors, start_id)
-		if reached.size() >= total:
-			return
-		for id in neighbors.keys():
-			if reached.has(id):
-				continue
-			var candidates := _grid_neighbors_of(id, columns, rows)
-			if candidates.is_empty():
-				continue
-			var target: int = candidates[rng.randi_range(0, candidates.size() - 1)]
-			_link(neighbors, id, target)
-
-
-static func _bfs_reachable(neighbors: Dictionary, start_id: int) -> Dictionary:
-	var visited: Dictionary = {}
-	var queue: Array = [start_id]
-	while not queue.is_empty():
-		var current: int = queue.pop_front()
-		if visited.has(current):
-			continue
-		visited[current] = true
-		for next_id in neighbors.get(current, []):
+static func _carve_spanning_tree(neighbors: Dictionary, start_id: int, columns: int, rows: int, rng: RandomNumberGenerator) -> void:
+	# ランダム化DFS(いわゆる recursive backtracker)で全域木を掘る。
+	# グリッドは元々全マスが上下左右で繋がりうるので、この方式なら
+	# 「スタートから辿り着けないマスが残る」ことが原理的に起きない
+	# (以前の独立確率抽選+事後救済パッチという方式が不要になった)。
+	# 再帰ではなくスタックを使い、大きな盤面でも深さの心配なく処理する。
+	var visited: Dictionary = {start_id: true}
+	var stack: Array = [start_id]
+	while not stack.is_empty():
+		var current: int = stack[-1]
+		var candidates: Array = []
+		for next_id in _grid_neighbors_of(current, columns, rows):
 			if not visited.has(next_id):
-				queue.append(next_id)
-	return visited
+				candidates.append(next_id)
+		if candidates.is_empty():
+			stack.pop_back()
+			continue
+		var chosen: int = candidates[rng.randi_range(0, candidates.size() - 1)]
+		_link(neighbors, current, chosen)
+		visited[chosen] = true
+		stack.append(chosen)
+
+
+static func _add_extra_links(neighbors: Dictionary, columns: int, rows: int, extra_link_ratio: float, rng: RandomNumberGenerator) -> void:
+	# 全域木に含まれなかった格子上の辺を洗い出し、その一部だけを抽選で
+	# 追加する。数を割合ベースで決め打ちしてから対象をランダムに選ぶこと
+	# で、「分岐は盤面全体でだいたいこのくらい」という本数を狙って
+	# コントロールできる(辺ごとに独立抽選するより読みやすい)。
+	var candidates: Array = []
+	for y in range(rows):
+		for x in range(columns):
+			var id := _id_at(x, y, columns)
+			if x + 1 < columns:
+				var right_id := _id_at(x + 1, y, columns)
+				if not neighbors[id].has(right_id):
+					candidates.append([id, right_id])
+			if y + 1 < rows:
+				var down_id := _id_at(x, y + 1, columns)
+				if not neighbors[id].has(down_id):
+					candidates.append([id, down_id])
+
+	if candidates.is_empty() or extra_link_ratio <= 0.0:
+		return
+
+	var extra_count: int = mini(candidates.size(), maxi(1, int(round(candidates.size() * extra_link_ratio))))
+
+	# 先頭 extra_count 件だけを使う部分Fisher-Yatesシャッフル(渡された rng を使い、
+	# シード固定時に再現できるようにする)。
+	for i in range(extra_count):
+		var pick_index: int = rng.randi_range(i, candidates.size() - 1)
+		var tmp = candidates[i]
+		candidates[i] = candidates[pick_index]
+		candidates[pick_index] = tmp
+		var pair: Array = candidates[i]
+		_link(neighbors, int(pair[0]), int(pair[1]))
 
 
 static func _bfs_distances(neighbors: Dictionary, start_id: int) -> Dictionary:

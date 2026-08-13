@@ -2,7 +2,7 @@
   "grid": {
     "columns": 9,
     "rows": 7,
-    "edge_keep_chance": 0.62
+    "extra_link_ratio": 0.05
   },
   "start": {
     "label": "START",
