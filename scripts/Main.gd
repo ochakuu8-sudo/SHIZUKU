@@ -4,6 +4,8 @@ const UI_FONT := preload("res://assets/fonts/NotoSansCJKjp-Regular.otf")
 const BOARD_MAP_SCRIPT := preload("res://scripts/BoardMap.gd")
 const DICE_WIDGET_SCRIPT := preload("res://scripts/DiceWidget.gd")
 const PIECE_WIDGET_SCRIPT := preload("res://scripts/PieceWidget.gd")
+const ICON_WIDGET_SCRIPT := preload("res://scripts/IconWidget.gd")
+const BACKGROUND_WIDGET_SCRIPT := preload("res://scripts/BackgroundWidget.gd")
 const MAP_NODE_SIZE := Vector2(104, 62)
 const PIECE_SIZE := Vector2(30, 30)
 
@@ -18,6 +20,18 @@ const SPACE_COLORS := {
 	"boss": Color("#bd5b83"),
 	"defeat": Color("#7d334c"),
 	"empty": Color("#252a34")
+}
+
+const TYPE_ICONS := {
+	"start": "flag",
+	"fork": "branch",
+	"train": "dumbbell",
+	"event": "scroll",
+	"encounter": "swords",
+	"rest": "campfire",
+	"shop": "bag",
+	"boss": "crown",
+	"defeat": "skull"
 }
 
 var board_buttons: Array[Button] = []
@@ -111,9 +125,9 @@ func _apply_ui_theme() -> void:
 
 
 func _build_ui() -> void:
-	var background := ColorRect.new()
-	background.color = Color("#10141c")
+	var background := BACKGROUND_WIDGET_SCRIPT.new()
 	background.set_anchors_preset(Control.PRESET_FULL_RECT)
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
 
 	var page := MarginContainer.new()
@@ -151,6 +165,11 @@ func _build_ui() -> void:
 func _build_top_bar() -> Control:
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", 8)
+
+	var emblem := ICON_WIDGET_SCRIPT.new()
+	emblem.setup("spark", Color("#f2ca69"))
+	emblem.custom_minimum_size = Vector2(30, 30)
+	header.add_child(emblem)
 
 	var title_box := VBoxContainer.new()
 	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -277,10 +296,19 @@ func _build_status_card() -> Control:
 	location_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(location_label)
 
+	var gold_box := HBoxContainer.new()
+	gold_box.add_theme_constant_override("separation", 4)
+	top.add_child(gold_box)
+
+	var gold_icon := ICON_WIDGET_SCRIPT.new()
+	gold_icon.setup("coin", Color("#f2ca69"))
+	gold_icon.custom_minimum_size = Vector2(18, 18)
+	gold_box.add_child(gold_icon)
+
 	gold_label = Label.new()
 	gold_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	gold_label.add_theme_font_size_override("font_size", 17)
-	top.add_child(gold_label)
+	gold_box.add_child(gold_label)
 
 	route_stage_label = Label.new()
 	route_stage_label.modulate = Color(1, 1, 1, 0.58)
@@ -292,18 +320,18 @@ func _build_status_card() -> Control:
 	box.add_child(meta_label)
 
 	hp_bar = _make_bar(Color("#d76f57"))
-	hp_bar_row = _make_labeled_bar("HP", hp_bar)
+	hp_bar_row = _make_labeled_bar("HP", "heart", Color("#e58267"), hp_bar)
 	box.add_child(hp_bar_row)
 	stamina_bar = _make_bar(Color("#63a7b4"))
-	box.add_child(_make_labeled_bar("ST", stamina_bar))
+	box.add_child(_make_labeled_bar("ST", "bolt", Color("#7fc3d1"), stamina_bar))
 
 	var stats := HBoxContainer.new()
 	stats.add_theme_constant_override("separation", 6)
 	box.add_child(stats)
-	stats.add_child(_make_stat_chip("str", "筋力", Color("#5572a8")))
-	stats.add_child(_make_stat_chip("charm", "魅力", Color("#8d65b7")))
-	stats.add_child(_make_stat_chip("mind", "知性", Color("#5c95a1")))
-	stats.add_child(_make_stat_chip("resolve", "覚悟", Color("#b88a56")))
+	stats.add_child(_make_stat_chip("str", "筋力", "sword", Color("#5572a8")))
+	stats.add_child(_make_stat_chip("charm", "魅力", "spark", Color("#8d65b7")))
+	stats.add_child(_make_stat_chip("mind", "知性", "book", Color("#5c95a1")))
+	stats.add_child(_make_stat_chip("resolve", "覚悟", "flame", Color("#b88a56")))
 	return panel
 
 
@@ -333,6 +361,7 @@ func _build_action_card() -> Control:
 
 	var rest_button := _make_button("休息", Color("#5c95a1"))
 	rest_button.pressed.connect(game_state.rest)
+	_add_icon_badge(rest_button, "campfire", Color(1, 1, 1, 0.85), 18.0)
 	box.add_child(rest_button)
 
 	var train_title := Label.new()
@@ -347,14 +376,17 @@ func _build_action_card() -> Control:
 
 	var str_button := _make_button("筋力", Color("#5572a8"))
 	str_button.pressed.connect(func() -> void: game_state.manual_train("str"))
+	_add_icon_badge(str_button, "sword", Color(1, 1, 1, 0.85), 16.0)
 	train_row.add_child(str_button)
 
 	var charm_button := _make_button("魅力", Color("#8d65b7"))
 	charm_button.pressed.connect(func() -> void: game_state.manual_train("charm"))
+	_add_icon_badge(charm_button, "spark", Color(1, 1, 1, 0.85), 16.0)
 	train_row.add_child(charm_button)
 
 	var mind_button := _make_button("知性", Color("#5c95a1"))
 	mind_button.pressed.connect(func() -> void: game_state.manual_train("mind"))
+	_add_icon_badge(mind_button, "book", Color(1, 1, 1, 0.85), 16.0)
 	train_row.add_child(mind_button)
 	return action_panel
 
@@ -407,14 +439,17 @@ func _build_battle_card() -> Control:
 
 	var attack_button := _make_button("攻撃", Color("#b05757"))
 	attack_button.pressed.connect(game_state.battle_attack)
+	_add_icon_badge(attack_button, "swords", Color(1, 1, 1, 0.85), 18.0)
 	row.add_child(attack_button)
 
 	var skill_button := _make_button("スキル", Color("#8d65b7"))
 	skill_button.pressed.connect(game_state.battle_skill)
+	_add_icon_badge(skill_button, "bolt", Color(1, 1, 1, 0.85), 18.0)
 	row.add_child(skill_button)
 
 	var guard_button := _make_button("防御", Color("#5572a8"))
 	guard_button.pressed.connect(game_state.battle_guard)
+	_add_icon_badge(guard_button, "shield", Color(1, 1, 1, 0.85), 18.0)
 	row.add_child(guard_button)
 
 	var flee_button := _make_button("離脱", Color("#394050"))
@@ -531,11 +566,13 @@ func _render_route_choices() -> void:
 		var option: Dictionary = raw_option
 		var next_id := int(option.get("id", -1))
 		var label := String(option.get("route_label", option.get("label", "ルート")))
-		var button := _make_button(label, SPACE_COLORS.get(String(option.get("type", "")), Color("#5572a8")), true)
+		var type_name := String(option.get("type", ""))
+		var button := _make_button(label, SPACE_COLORS.get(type_name, Color("#5572a8")), true)
 		button.text = "%s\n%s" % [label, _route_hint(option)]
 		button.custom_minimum_size = Vector2(0, 54)
 		button.add_theme_font_size_override("font_size", 15)
 		button.tooltip_text = String(option.get("description", ""))
+		_add_icon_badge(button, TYPE_ICONS.get(type_name, ""), Color(1, 1, 1, 0.85), 20.0)
 		if next_id == selected_id:
 			button.text = "選択中\n%s" % label
 			button.disabled = true
@@ -587,7 +624,7 @@ func _build_event_overlay() -> void:
 	event_overlay.visible = false
 	event_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	event_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	event_overlay.add_theme_stylebox_override("panel", _panel_style(Color(0.05, 0.07, 0.10, 0.86), Color(0, 0, 0, 0), 0, 0))
+	event_overlay.add_theme_stylebox_override("panel", _panel_style(Color(0.05, 0.07, 0.10, 0.86), Color(0, 0, 0, 0), 0, 0, false))
 	add_child(event_overlay)
 
 	var center := CenterContainer.new()
@@ -666,7 +703,7 @@ func _build_gallery_overlay() -> void:
 	gallery_overlay.visible = false
 	gallery_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	gallery_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	gallery_overlay.add_theme_stylebox_override("panel", _panel_style(Color(0.05, 0.07, 0.10, 0.86), Color(0, 0, 0, 0), 0, 0))
+	gallery_overlay.add_theme_stylebox_override("panel", _panel_style(Color(0.05, 0.07, 0.10, 0.86), Color(0, 0, 0, 0), 0, 0, false))
 	add_child(gallery_overlay)
 
 	var center := CenterContainer.new()
@@ -879,7 +916,7 @@ func _build_orientation_overlay() -> void:
 	orientation_overlay.visible = false
 	orientation_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	orientation_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	orientation_overlay.add_theme_stylebox_override("panel", _panel_style(Color("#10141c"), Color("#2c3544"), 1, 0))
+	orientation_overlay.add_theme_stylebox_override("panel", _panel_style(Color("#10141c"), Color("#2c3544"), 1, 0, false))
 	add_child(orientation_overlay)
 
 	var center := CenterContainer.new()
@@ -1129,12 +1166,18 @@ func _panel_margin(parent: Control, size: int) -> MarginContainer:
 	return margin
 
 
-func _make_labeled_bar(label_text: String, bar: ProgressBar) -> Control:
+func _make_labeled_bar(label_text: String, icon_kind: String, icon_color: Color, bar: ProgressBar) -> Control:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
+	row.add_theme_constant_override("separation", 6)
+
+	var icon := ICON_WIDGET_SCRIPT.new()
+	icon.setup(icon_kind, icon_color)
+	icon.custom_minimum_size = Vector2(16, 16)
+	row.add_child(icon)
+
 	var label := Label.new()
 	label.text = label_text
-	label.custom_minimum_size = Vector2(28, 0)
+	label.custom_minimum_size = Vector2(22, 0)
 	label.modulate = Color(1, 1, 1, 0.62)
 	row.add_child(label)
 	row.add_child(bar)
@@ -1146,21 +1189,32 @@ func _make_bar(fill_color: Color) -> ProgressBar:
 	bar.custom_minimum_size = Vector2(0, 14)
 	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.show_percentage = false
-	bar.add_theme_stylebox_override("background", _bar_style(Color("#111721"), 7))
+	bar.add_theme_stylebox_override("background", _bar_style(Color("#111721"), 7, true))
 	bar.add_theme_stylebox_override("fill", _bar_style(fill_color, 7))
 	return bar
 
 
-func _make_stat_chip(key: String, title: String, color: Color) -> Control:
+func _make_stat_chip(key: String, title: String, icon_kind: String, color: Color) -> Control:
 	var panel := PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override("panel", _panel_style(color.darkened(0.25), color.lightened(0.08), 1, 8))
 	var margin := _panel_margin(panel, 6)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	margin.add_child(box)
+
+	var icon := ICON_WIDGET_SCRIPT.new()
+	icon.setup(icon_kind, Color(1, 1, 1, 0.92))
+	icon.custom_minimum_size = Vector2(18, 18)
+	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(icon)
+
 	var label := Label.new()
 	label.text = "%s\n0" % title
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 13)
-	margin.add_child(label)
+	box.add_child(label)
 	stat_labels[key] = label
 	return panel
 
@@ -1178,7 +1232,24 @@ func _make_map_node_button(space: Dictionary) -> Button:
 	button.add_theme_stylebox_override("normal", _button_style(color, false, 12))
 	button.add_theme_stylebox_override("hover", _button_style(color.lightened(0.08), false, 12))
 	button.add_theme_stylebox_override("pressed", _button_style(color.darkened(0.08), false, 12))
+	_add_icon_badge(button, TYPE_ICONS.get(type_name, ""), Color(1, 1, 1, 0.85), 20.0)
 	return button
+
+
+func _add_icon_badge(parent: Control, icon_kind: String, color: Color, badge_size: float) -> void:
+	if icon_kind == "":
+		return
+	var icon := ICON_WIDGET_SCRIPT.new()
+	icon.setup(icon_kind, color)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.size = Vector2(badge_size, badge_size)
+	icon.anchor_left = 1.0
+	icon.anchor_right = 1.0
+	icon.offset_left = -badge_size - 5.0
+	icon.offset_right = -5.0
+	icon.offset_top = 5.0
+	icon.offset_bottom = 5.0 + badge_size
+	parent.add_child(icon)
 
 
 func _make_utility_button(text: String) -> Button:
@@ -1201,7 +1272,7 @@ func _make_button(text: String, color: Color, emphasized: bool = false) -> Butto
 	return button
 
 
-func _panel_style(color: Color, border: Color = Color("#3a4050"), border_width: int = 1, radius: int = 8) -> StyleBoxFlat:
+func _panel_style(color: Color, border: Color = Color("#3a4050"), border_width: int = 1, radius: int = 8, shadow: bool = true) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = color
 	style.border_color = border
@@ -1213,6 +1284,11 @@ func _panel_style(color: Color, border: Color = Color("#3a4050"), border_width: 
 	style.corner_radius_top_right = radius
 	style.corner_radius_bottom_left = radius
 	style.corner_radius_bottom_right = radius
+	style.anti_aliasing = true
+	if shadow:
+		style.shadow_color = Color(0, 0, 0, 0.4)
+		style.shadow_size = 8
+		style.shadow_offset = Vector2(0, 4)
 	return style
 
 
@@ -1232,16 +1308,29 @@ func _button_style(color: Color, highlighted: bool, radius: int) -> StyleBoxFlat
 	style.content_margin_right = 8
 	style.content_margin_top = 6
 	style.content_margin_bottom = 6
+	style.anti_aliasing = true
+	style.shadow_color = Color(0, 0, 0, 0.32)
+	style.shadow_size = 4
+	style.shadow_offset = Vector2(0, 2)
 	return style
 
 
-func _bar_style(color: Color, radius: int) -> StyleBoxFlat:
+func _bar_style(color: Color, radius: int, inset: bool = false) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = color
 	style.corner_radius_top_left = radius
 	style.corner_radius_top_right = radius
 	style.corner_radius_bottom_left = radius
 	style.corner_radius_bottom_right = radius
+	style.anti_aliasing = true
+	if inset:
+		style.border_color = Color(0, 0, 0, 0.5)
+		style.border_width_left = 1
+		style.border_width_top = 1
+		style.border_width_right = 1
+		style.border_width_bottom = 1
+		style.shadow_color = Color(0, 0, 0, 0.35)
+		style.shadow_size = 3
 	return style
 
 

@@ -44,14 +44,22 @@ func set_focus_state(space_id: int, option_ids: Array) -> void:
 
 func _draw() -> void:
 	var map_size := get_map_size()
-	draw_rect(Rect2(Vector2.ZERO, map_size), Color("#141923"))
-	draw_rect(Rect2(Vector2(18, 18), map_size - Vector2(36, 36)), Color("#181f2b"))
+	draw_rect(Rect2(Vector2.ZERO, map_size), Color("#0e121b"))
+
+	var inner := Rect2(Vector2(18, 18), map_size - Vector2(36, 36))
+	var band_steps := 20
+	for i in range(band_steps):
+		var t0: float = float(i) / float(band_steps)
+		var t1: float = float(i + 1) / float(band_steps)
+		var c := Color("#1c2436").lerp(Color("#141a27"), (t0 + t1) * 0.5)
+		draw_rect(Rect2(inner.position.x, inner.position.y + inner.size.y * t0, inner.size.x, inner.size.y * (t1 - t0) + 1.0), c, true)
+	draw_rect(inner, Color("#39465c"), false, 1.4)
 
 	for i in range(90):
 		var x := fposmod(float(i * 211), map_size.x - 120.0) + 60.0
 		var y := fposmod(float(i * 97), map_size.y - 100.0) + 50.0
 		var radius := 1.0 + float(i % 3) * 0.45
-		draw_circle(Vector2(x, y), radius, Color(1, 1, 1, 0.035))
+		draw_circle(Vector2(x, y), radius, Color(1, 1, 1, 0.045))
 
 	for y in range(1, int(board_data.get("height", 1))):
 		var line_y := MAP_PADDING.y + float(y) * NODE_SPACING.y + NODE_SIZE.y * 0.5
