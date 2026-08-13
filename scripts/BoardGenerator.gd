@@ -1,95 +1,80 @@
 extends RefCounted
-## 桃鉄風の「マス目が詰まった」盤面を、data/board.json の設定に沿って
-## そのつどランダム生成する。GameState.new_game() から呼ばれる。
+## 桃鉄風に、盤面をグリッド状に東西南北へ広げてランダム生成する。
+## data/board.json の設定を使い、GameState.new_game() から呼ばれる。
 ##
 ## 生成方式:
-## - 盤面を列(x=0..columns-1)に分ける。列0=拠点(1マス)、最終列=ボス(1マス)。
-## - 中間の各列には複数マス(min_nodes_per_column〜max_nodes_per_column)をランダムなyに配置する。
-## - 隣接する列の間だけをつなぐ(x昇順のみ)ことで、逆走やループが起きないDAGを保証する。
-## - 各マスは次列のマスに1〜2本つなぎ、分岐(桃鉄でいう分かれ道)を作る。
-## - 次列側で1本もつながっていないマスが出ないよう、最後に救済でつなぎ直す
-##   (到達不能マスが絶対に生まれないようにするため)。
+## - 盤面を columns x rows の格子とし、格子点(x, y)がそのままマスになる(間引きしない)。
+## - 開始マスは左上(0, 0)、ボスは対角の右下(columns-1, rows-1)に置く。
+## - この格子では「開始マスからの最短距離」が常に x + y と一意に定まるので、
+##   隣接する格子点同士(右隣・下隣)だけをつなぎ、距離が小さい方から大きい方へ
+##   一方向にのみ辺を張る。これでループの無いグラフ(DAG)を保証しつつ、
+##   上下左右どの隣とも(右か下かという形で)つながるマス目状のネットワークになる。
+## - 辺は確率的に間引いて分岐/合流だらけの網目にしつつ、間引きすぎて
+##   到達不能・意図しない行き止まりが生まれないよう最後に救済する。
 
 
 static func generate(theme: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
 	var grid: Dictionary = theme.get("grid", {})
-	var columns: int = maxi(4, int(grid.get("columns", 15)))
-	var rows: int = maxi(3, int(grid.get("rows", 8)))
-	var min_nodes: int = maxi(1, int(grid.get("min_nodes_per_column", 2)))
-	var max_nodes: int = maxi(min_nodes, int(grid.get("max_nodes_per_column", 4)))
-	var extra_edge_chance: float = float(grid.get("extra_edge_chance", 0.15))
-	var fork_chance: float = float(grid.get("fork_chance", 0.45))
-
-	var columns_rows: Array = []
-	columns_rows.append(_pick_rows(rows, 1, rng))
-	for x in range(1, columns - 1):
-		var count: int = rng.randi_range(min_nodes, min(max_nodes, rows))
-		columns_rows.append(_pick_rows(rows, count, rng))
-	columns_rows.append(_pick_rows(rows, 1, rng))
-
-	var id_grid: Array = []
-	var next_id := 0
-	for x in range(columns_rows.size()):
-		var ids_in_column: Array = []
-		for y in columns_rows[x]:
-			ids_in_column.append(next_id)
-			next_id += 1
-		id_grid.append(ids_in_column)
+	var columns: int = maxi(3, int(grid.get("columns", 9)))
+	var rows: int = maxi(3, int(grid.get("rows", 7)))
+	var edge_keep_chance: float = clampf(float(grid.get("edge_keep_chance", 0.62)), 0.05, 1.0)
 
 	var out_edges: Dictionary = {}
-	for x in range(columns_rows.size()):
-		for id in id_grid[x]:
-			out_edges[id] = []
 	var in_degree: Dictionary = {}
-	for id in out_edges.keys():
-		in_degree[id] = 0
+	for y in range(rows):
+		for x in range(columns):
+			var id := _id_at(x, y, columns)
+			out_edges[id] = []
+			in_degree[id] = 0
 
-	for x in range(columns_rows.size() - 1):
-		var src_ys: Array = columns_rows[x]
-		var src_ids: Array = id_grid[x]
-		var dst_ys: Array = columns_rows[x + 1]
-		var dst_ids: Array = id_grid[x + 1]
+	# 右隣・下隣とだけ辺の候補を作る(距離は必ず+1で増えるので向きが一意に決まり、
+	# ループが生まれない)。
+	for y in range(rows):
+		for x in range(columns):
+			if x + 1 < columns and rng.randf() <= edge_keep_chance:
+				_add_edge(out_edges, in_degree, _id_at(x, y, columns), _id_at(x + 1, y, columns))
+			if y + 1 < rows and rng.randf() <= edge_keep_chance:
+				_add_edge(out_edges, in_degree, _id_at(x, y, columns), _id_at(x, y + 1, columns))
 
-		for i in range(src_ids.size()):
-			var src_id: int = src_ids[i]
-			var src_y: int = src_ys[i]
-			var order := _sorted_by_distance(dst_ys, src_y)
-
-			var link_count := 1
-			if dst_ids.size() > 1 and rng.randf() < fork_chance:
-				link_count = 2
-			link_count = mini(link_count, dst_ids.size())
-
-			for k in range(link_count):
-				var dst_id: int = dst_ids[order[k]]
-				out_edges[src_id].append(dst_id)
-				in_degree[dst_id] = int(in_degree[dst_id]) + 1
-
-			for k in range(link_count, dst_ids.size()):
-				if rng.randf() < extra_edge_chance:
-					var dst_id2: int = dst_ids[order[k]]
-					if not out_edges[src_id].has(dst_id2):
-						out_edges[src_id].append(dst_id2)
-						in_degree[dst_id2] = int(in_degree[dst_id2]) + 1
-
-		# 前の列から1本もつながっていないマスを、一番近いマスから救済してつなぐ。
-		for j in range(dst_ids.size()):
-			var dst_id3: int = dst_ids[j]
-			if int(in_degree.get(dst_id3, 0)) > 0:
+	# 間引きすぎて孤立したマスを救済する: 入次数0(開始マス以外)なら、
+	# 格子上で距離が1小さい隣(左 or 上)のどちらかと強制的につなぐ。
+	for y in range(rows):
+		for x in range(columns):
+			if x == 0 and y == 0:
 				continue
-			var closest_index := _closest_index(src_ys, dst_ys[j])
-			var closest_id: int = src_ids[closest_index]
-			if not out_edges[closest_id].has(dst_id3):
-				out_edges[closest_id].append(dst_id3)
-			in_degree[dst_id3] = 1
+			var id := _id_at(x, y, columns)
+			if int(in_degree.get(id, 0)) > 0:
+				continue
+			var lower_neighbors: Array = []
+			if x > 0:
+				lower_neighbors.append(_id_at(x - 1, y, columns))
+			if y > 0:
+				lower_neighbors.append(_id_at(x, y - 1, columns))
+			var source_id: int = lower_neighbors[rng.randi_range(0, lower_neighbors.size() - 1)]
+			_add_edge(out_edges, in_degree, source_id, id)
+
+	# 出次数0(ボス以外)なら、距離が1大きい隣(右 or 下)のどちらかと強制的につなぐ。
+	for y in range(rows):
+		for x in range(columns):
+			if x == columns - 1 and y == rows - 1:
+				continue
+			var id := _id_at(x, y, columns)
+			if not out_edges[id].is_empty():
+				continue
+			var higher_neighbors: Array = []
+			if x + 1 < columns:
+				higher_neighbors.append(_id_at(x + 1, y, columns))
+			if y + 1 < rows:
+				higher_neighbors.append(_id_at(x, y + 1, columns))
+			var target_id: int = higher_neighbors[rng.randi_range(0, higher_neighbors.size() - 1)]
+			_add_edge(out_edges, in_degree, id, target_id)
 
 	var spaces: Array = []
-	for x in range(columns_rows.size()):
-		var is_start := x == 0
-		var is_boss := x == columns_rows.size() - 1
-		for i in range(id_grid[x].size()):
-			var id: int = id_grid[x][i]
-			var y: int = columns_rows[x][i]
+	for y in range(rows):
+		for x in range(columns):
+			var id := _id_at(x, y, columns)
+			var is_start := x == 0 and y == 0
+			var is_boss := x == columns - 1 and y == rows - 1
 			var space := {
 				"id": id,
 				"x": x,
@@ -109,9 +94,20 @@ static func generate(theme: Dictionary, rng: RandomNumberGenerator) -> Dictionar
 	return {
 		"width": columns,
 		"height": rows,
-		"start_id": int(id_grid[0][0]),
+		"start_id": _id_at(0, 0, columns),
 		"spaces": spaces,
 	}
+
+
+static func _id_at(x: int, y: int, columns: int) -> int:
+	return y * columns + x
+
+
+static func _add_edge(out_edges: Dictionary, in_degree: Dictionary, from_id: int, to_id: int) -> void:
+	if out_edges[from_id].has(to_id):
+		return
+	out_edges[from_id].append(to_id)
+	in_degree[to_id] = int(in_degree.get(to_id, 0)) + 1
 
 
 static func _fill_start_tile(space: Dictionary, theme: Dictionary) -> void:
@@ -201,36 +197,3 @@ static func _pick(pool: Array, rng: RandomNumberGenerator, fallback: String) -> 
 	if pool.is_empty():
 		return fallback
 	return String(pool[rng.randi_range(0, pool.size() - 1)])
-
-
-static func _pick_rows(rows: int, count: int, rng: RandomNumberGenerator) -> Array:
-	var pool: Array = []
-	for i in range(rows):
-		pool.append(i)
-	for i in range(pool.size() - 1, 0, -1):
-		var j: int = rng.randi_range(0, i)
-		var tmp = pool[i]
-		pool[i] = pool[j]
-		pool[j] = tmp
-	var picked: Array = pool.slice(0, mini(count, pool.size()))
-	picked.sort()
-	return picked
-
-
-static func _sorted_by_distance(ys: Array, target_y: int) -> Array:
-	var order: Array = []
-	for i in range(ys.size()):
-		order.append(i)
-	order.sort_custom(func(a, b): return absi(int(ys[a]) - target_y) < absi(int(ys[b]) - target_y))
-	return order
-
-
-static func _closest_index(ys: Array, target_y: int) -> int:
-	var best := 0
-	var best_dist := 2147483647
-	for i in range(ys.size()):
-		var d: int = absi(int(ys[i]) - target_y)
-		if d < best_dist:
-			best_dist = d
-			best = i
-	return best

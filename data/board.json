@@ -1,11 +1,8 @@
 {
   "grid": {
-    "columns": 15,
-    "rows": 8,
-    "min_nodes_per_column": 2,
-    "max_nodes_per_column": 4,
-    "fork_chance": 0.45,
-    "extra_edge_chance": 0.15
+    "columns": 9,
+    "rows": 7,
+    "edge_keep_chance": 0.62
   },
   "start": {
     "label": "START",
