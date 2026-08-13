@@ -15,6 +15,9 @@ func _init() -> void:
 	_test_train_all_respects_route_profile_bonus()
 	_test_exhaustion_defeat_returns_to_start()
 	_test_load_game_repairs_missing_fields()
+	_test_multi_step_move_lands_exactly_on_fork()
+	_test_multi_step_move_skips_intermediate_effects()
+	_test_multi_step_move_stops_early_at_fork_and_carries_remainder()
 
 	if failures > 0:
 		print("FAILED: %d/%d checks failed" % [failures, checks])
@@ -115,6 +118,49 @@ func _test_exhaustion_defeat_returns_to_start() -> void:
 
 	_assert(int(gs.player.get("hp", 0)) == 1, "exhaustion defeat should leave hp at 1 (got %d)" % int(gs.player.get("hp", 0)))
 	_assert(int(gs.player.get("position", -1)) == int(gs.board_data.get("start_id", 0)), "exhaustion defeat should send the player back to start_id")
+	gs.queue_free()
+
+
+func _test_multi_step_move_lands_exactly_on_fork() -> void:
+	# board.json: start(0) -> 1(train) -> 2(event) -> 3(fork, next_ids=[10,20,30]).
+	# 出目3で、ちょうど分岐マスに到達するケース。
+	var gs := _new_game_state()
+	gs.advance_route(3)
+	_assert(int(gs.player.get("position", -1)) == 3, "advance_route(3) from start should land exactly on the fork (id 3)")
+	_assert(gs.needs_route_choice(), "landing on a fork should require a route choice")
+	_assert(gs.get_pending_steps() == 0, "no dice pips should remain when the fork is reached exactly")
+	gs.queue_free()
+
+
+func _test_multi_step_move_skips_intermediate_effects() -> void:
+	# 出目3で 1(train, stat=all) と 2(event, category=story) を「通過」するだけなら、
+	# それらのマス効果(育成/イベント)は発生しないはず。
+	var gs := _new_game_state()
+	var before_stats: Dictionary = gs.player["stats"].duplicate(true)
+	var before_gallery_size: int = gs.player["gallery"].size()
+
+	gs.advance_route(3)
+
+	var after_stats: Dictionary = gs.player["stats"]
+	for key in before_stats.keys():
+		_assert(int(after_stats.get(key, 0)) == int(before_stats.get(key, 0)),
+			"passing through an intermediate train tile should not change stats (%s)" % key)
+	_assert(gs.player["gallery"].size() == before_gallery_size,
+		"passing through an intermediate event tile should not add a gallery entry")
+	gs.queue_free()
+
+
+func _test_multi_step_move_stops_early_at_fork_and_carries_remainder() -> void:
+	# 出目5なら、分岐(id3)に3マス目で到達し、2マス分が保留される。
+	# ルートを選ぶと、保留分(1マス)がそのまま消化されて id 10 -> id 11 まで進む。
+	var gs := _new_game_state()
+	gs.advance_route(5)
+	_assert(int(gs.player.get("position", -1)) == 3, "advance_route(5) should stop at the fork with pips remaining")
+	_assert(gs.get_pending_steps() == 2, "2 pips (this fork choice + 1 more) should remain (got %d)" % gs.get_pending_steps())
+
+	gs.choose_route(10)
+	_assert(gs.get_pending_steps() == 0, "pending steps should be consumed after choosing a route")
+	_assert(int(gs.player.get("position", -1)) == 11, "the remaining pip should carry the player from 10 to 11 (got %d)" % int(gs.player.get("position", -1)))
 	gs.queue_free()
 
 

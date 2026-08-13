@@ -34,7 +34,8 @@ var flash_tweens: Dictionary = {}
 
 var piece_widget
 var piece_target_id := -1
-var piece_hop_tween: Tween
+var piece_hop_queue: Array[int] = []
+var piece_hop_processing := false
 
 var dice_widget
 var dice_rng := RandomNumberGenerator.new()
@@ -85,6 +86,7 @@ func _ready() -> void:
 	game_state.changed.connect(_render)
 	game_state.event_requested.connect(_show_event)
 	game_state.damage_popup.connect(_on_damage_popup)
+	game_state.piece_moved.connect(_on_piece_moved)
 	_apply_ui_theme()
 	_build_ui()
 	_apply_responsive_layout()
@@ -189,6 +191,7 @@ func _build_top_bar() -> Control:
 	load_button.pressed.connect(func() -> void:
 		last_centered_position = -1
 		piece_target_id = -1
+		piece_hop_queue.clear()
 		game_state.load_game()
 	)
 	header.add_child(load_button)
@@ -517,7 +520,11 @@ func _render_route_choices() -> void:
 	if not route_panel.visible:
 		return
 
-	route_status.text = "進む先を選んでください。危険な道ほど報酬も大きくなります。"
+	var pending: int = game_state.get_pending_steps()
+	if pending > 1:
+		route_status.text = "進む先を選んでください。選んだ後、残り%dマス分そのまま進みます。" % (pending - 1)
+	else:
+		route_status.text = "進む先を選んでください。危険な道ほど報酬も大きくなります。"
 
 	var selected_id := int(game_state.player.get("selected_next_id", -1))
 	for raw_option in options:
@@ -748,6 +755,7 @@ func _build_new_game_confirm() -> void:
 	new_game_confirm.confirmed.connect(func() -> void:
 		last_centered_position = -1
 		piece_target_id = -1
+		piece_hop_queue.clear()
 		game_state.new_game()
 	)
 	add_child(new_game_confirm)
@@ -766,21 +774,41 @@ func _on_advance_pressed() -> void:
 		return
 	if game_state.is_in_battle() or game_state.needs_route_choice() or bool(game_state.player.get("finished", false)):
 		return
-	await _play_dice_roll()
-	game_state.advance_route()
+	var rolled := await _play_dice_roll()
+	game_state.advance_route(rolled)
+	await _await_piece_hops()
+	_unlock_input()
 
 
 func _on_route_chosen(next_id: int) -> void:
+	# 分岐でのルート選択は、直前のサイコロの出目のうち余ったマス数を消化するだけなので
+	# ここで新たにサイコロを振り直すことはしない。駒が歩き終わるまでは入力をロックする。
 	if input_locked:
 		return
-	await _play_dice_roll()
+	_lock_input()
 	game_state.choose_route(next_id)
+	await _await_piece_hops()
+	_unlock_input()
 
 
-func _play_dice_roll() -> void:
+func _lock_input() -> void:
 	input_locked = true
 	input_lock_overlay.visible = true
 	input_lock_overlay.move_to_front()
+
+
+func _unlock_input() -> void:
+	input_lock_overlay.visible = false
+	input_locked = false
+
+
+func _await_piece_hops() -> void:
+	while piece_hop_processing or not piece_hop_queue.is_empty():
+		await get_tree().process_frame
+
+
+func _play_dice_roll() -> int:
+	_lock_input()
 	dice_widget.modulate = Color(1, 1, 1, 1)
 
 	var final_value := dice_rng.randi_range(1, 6)
@@ -797,8 +825,9 @@ func _play_dice_roll() -> void:
 
 	await get_tree().create_timer(0.3).timeout
 	dice_widget.modulate = Color(1, 1, 1, 0.35)
-	input_lock_overlay.visible = false
-	input_locked = false
+	# 続けて駒のホップ演出に入るため、ここではまだ入力ロックを解除しない。
+	# (呼び出し元の _on_advance_pressed が最後に _unlock_input() する)
+	return final_value
 
 
 func _bounce(control: Control) -> void:
@@ -1007,33 +1036,60 @@ func _apply_map_center(center: Vector2, animate: bool = true) -> void:
 
 
 func _update_piece_position(position: int) -> void:
+	# 通常のホップ演出は piece_moved シグナル経由のキュー(_on_piece_moved)で
+	# 1マスずつ処理する。ここは初回描画やNew/Loadでの瞬間配置専用。
+	if piece_target_id != -1:
+		return
 	var space: Dictionary = game_state.get_space_by_id(position)
+	if space.is_empty():
+		return
+	piece_widget.position = board_map.get_space_center(space) - piece_widget.size * 0.5
+	piece_target_id = position
+
+
+func _on_piece_moved(space_id: int) -> void:
+	piece_hop_queue.append(space_id)
+	if not piece_hop_processing:
+		_process_piece_hop_queue()
+
+
+func _process_piece_hop_queue() -> void:
+	piece_hop_processing = true
+	while not piece_hop_queue.is_empty():
+		var space_id: int = piece_hop_queue.pop_front()
+		var is_last_in_chain := piece_hop_queue.is_empty()
+		await _hop_piece_to(space_id, is_last_in_chain)
+	piece_hop_processing = false
+
+
+func _hop_piece_to(space_id: int, bounce_on_land: bool = true) -> void:
+	var space: Dictionary = game_state.get_space_by_id(space_id)
 	if space.is_empty():
 		return
 	var target_position: Vector2 = board_map.get_space_center(space) - piece_widget.size * 0.5
 
 	if piece_target_id == -1:
 		piece_widget.position = target_position
-		piece_target_id = position
+		piece_target_id = space_id
 		return
-	if position == piece_target_id:
+	if space_id == piece_target_id:
 		return
 
 	var start_position: Vector2 = piece_widget.position
-	piece_target_id = position
+	piece_target_id = space_id
 	_play_sfx("step")
 
-	if piece_hop_tween != null and piece_hop_tween.is_valid():
-		piece_hop_tween.kill()
-	piece_hop_tween = create_tween()
-	piece_hop_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	piece_hop_tween.tween_method(
+	var hop_tween := create_tween()
+	hop_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	hop_tween.tween_method(
 		func(t: float) -> void:
 			var hop_offset := sin(t * PI) * 14.0
 			piece_widget.position = start_position.lerp(target_position, t) - Vector2(0, hop_offset),
-		0.0, 1.0, 0.4
+		0.0, 1.0, 0.28
 	)
-	piece_hop_tween.tween_callback(func() -> void: _bounce(piece_widget))
+	await hop_tween.finished
+	if bounce_on_land:
+		_bounce(piece_widget)
 
 
 func _set_bar(bar: ProgressBar, value: int, max_value: int, key: String) -> void:

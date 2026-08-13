@@ -4,6 +4,7 @@ signal changed
 signal event_requested(event_data: Dictionary)
 signal log_added(text: String)
 signal damage_popup(amount: int, target: String)
+signal piece_moved(space_id: int)
 
 const BOARD_PATH := "res://data/board.json"
 const EVENTS_PATH := "res://data/events.json"
@@ -28,6 +29,7 @@ var player: Dictionary = {}
 var battle: Dictionary = {}
 var logs: Array[String] = []
 var audio_fx: Node
+var pending_steps := 0 # サイコロで余ったマス数。分岐でルートを選ぶと続きを消化する。
 
 
 func _ready() -> void:
@@ -99,6 +101,7 @@ func new_game() -> void:
 	player["position"] = int(board_data.get("start_id", 0))
 	battle.clear()
 	logs.clear()
+	pending_steps = 0
 	add_log("新しいルート攻略を開始しました。")
 	changed.emit()
 
@@ -172,6 +175,10 @@ func needs_route_choice() -> bool:
 	return next_ids.size() > 1
 
 
+func get_pending_steps() -> int:
+	return pending_steps
+
+
 func choose_route(next_id: int) -> void:
 	if is_in_battle():
 		add_log("戦闘中はルートを選べません。")
@@ -187,7 +194,13 @@ func choose_route(next_id: int) -> void:
 	var next_space := get_space_by_id(next_id)
 	_set_route_profile(_get_space_route_profile(next_space))
 	add_log("ルート選択: %s" % next_space.get("route_label", next_space.get("label", "次の道")))
-	_move_to_space(next_id)
+
+	var remaining := maxi(1, pending_steps)
+	pending_steps = 0
+	var is_final_step := remaining <= 1
+	_move_to_space(next_id, is_final_step)
+	if not is_final_step and int(player.get("position", -1)) == next_id and not is_in_battle():
+		_advance_steps(remaining - 1)
 
 
 func set_adult_content_enabled(enabled: bool) -> void:
@@ -196,7 +209,7 @@ func set_adult_content_enabled(enabled: bool) -> void:
 	changed.emit()
 
 
-func advance_route() -> void:
+func advance_route(steps: int = 1) -> void:
 	if is_in_battle():
 		add_log("戦闘中は移動できません。")
 		return
@@ -221,7 +234,36 @@ func advance_route() -> void:
 		add_log("ルートの終点に到着しました。")
 		changed.emit()
 		return
-	_move_to_space(int(next_ids[0]))
+	_advance_steps(maxi(1, steps))
+
+
+func _advance_steps(steps: int) -> void:
+	for i in range(steps):
+		if is_in_battle() or bool(player.get("finished", false)):
+			return
+
+		var current_next_ids := get_next_ids(get_current_space())
+		if current_next_ids.is_empty():
+			player["finished"] = true
+			add_log("ルートの終点に到着しました。")
+			changed.emit()
+			return
+
+		if current_next_ids.size() > 1:
+			pending_steps = steps - i
+			if pending_steps > 1:
+				add_log("分岐に到達。ルートを選ぶと残り%dマス分そのまま進みます。" % (pending_steps - 1))
+			else:
+				add_log("分岐に到達しました。次のルートを選べます。")
+			changed.emit()
+			return
+
+		var next_id := int(current_next_ids[0])
+		var is_final_step := i == steps - 1
+		_move_to_space(next_id, is_final_step)
+		if int(player.get("position", -1)) != next_id:
+			# 疲労などで途中送還された場合、残りの出目は消化しない。
+			return
 
 
 func manual_train(stat: String) -> void:
@@ -242,7 +284,7 @@ func rest() -> void:
 	changed.emit()
 
 
-func _move_to_space(next_id: int) -> void:
+func _move_to_space(next_id: int, resolve_effects: bool = true) -> void:
 	var next_space := get_space_by_id(next_id)
 	if next_space.is_empty():
 		add_log("進行先が見つかりません。")
@@ -253,13 +295,21 @@ func _move_to_space(next_id: int) -> void:
 	player["position"] = next_id
 	player["turn"] = int(player.get("turn", 0)) + 1
 	add_log("%s に進みました。" % next_space.get("label", "マス"))
+	piece_moved.emit(next_id)
 	_apply_travel_cost(next_space)
 	if int(player.get("position", -1)) != next_id:
 		# 疲労で倒れて拠点へ送還された場合、このマスの処理は行わない。
 		changed.emit()
 		return
 	_apply_route_pressure(next_space)
-	_resolve_space(next_space)
+
+	# サイコロの出目の途中で通過するだけのマスではイベント/戦闘/育成などの
+	# マス効果までは発生させない(本来のすごろくで止まった時だけ効果が起きるのと同じ)。
+	# ただし分岐点や終点(next_idsが1つでない)は、出目が余っていても必ずそこで
+	# 足を止めるマスなので常に解決する。
+	var should_resolve := resolve_effects or get_next_ids(next_space).size() != 1
+	if should_resolve:
+		_resolve_space(next_space)
 	changed.emit()
 
 
@@ -432,6 +482,7 @@ func _handle_defeat(enemy: Dictionary) -> void:
 	battle.clear()
 	add_log("敗北。10Gを失い、拠点で目を覚ましました。")
 	_play_sfx("defeat")
+	piece_moved.emit(player["position"])
 	_request_defeat_event(enemy)
 
 
@@ -658,6 +709,7 @@ func load_game() -> void:
 		player = parsed["player"]
 		_ensure_player_route_fields()
 		battle.clear()
+		pending_steps = 0
 		add_log("ロードしました。")
 	else:
 		add_log("セーブデータを読めませんでした。")
