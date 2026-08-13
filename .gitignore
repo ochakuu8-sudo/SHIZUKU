@@ -5,3 +5,5 @@ screenshots/
 *.translation
 export/
 user/
+__pycache__/
+*.pyc

@@ -18,27 +18,54 @@ func _ready() -> void:
 		var player := AudioStreamPlayer.new()
 		add_child(player)
 		players.append(player)
-
-	streams["decide"] = _tone(880.0, 0.06, "square", 0.45)
-	streams["dice_tick"] = _tone(1400.0, 0.025, "square", 0.3)
-	streams["dice_land"] = _sequence([392.0, 523.25], 0.09, "square", 0.5)
-	streams["hit"] = _tone(180.0, 0.05, "square", 0.5)
-	streams["damage"] = _noise_burst(0.12, 0.5)
-	streams["heal"] = _sequence([523.25, 659.25, 783.99], 0.07, "sine", 0.4)
-	streams["gold"] = _sequence([1046.5, 1318.5], 0.06, "square", 0.35)
-	streams["danger"] = _sequence([246.94, 220.0], 0.1, "square", 0.42)
-	streams["victory"] = _sequence([523.25, 659.25, 783.99, 1046.5], 0.11, "sine", 0.45)
-	streams["defeat"] = _sequence([392.0, 329.63, 261.63], 0.16, "sine", 0.4)
+	# SEの合成はここでまとめて行わず、初回再生時に1件ずつ遅延生成してキャッシュする
+	# (起動時に全SEを合成すると、その分だけ読み込みが体感で遅くなるため)。
 
 
 func play(id: String, volume_db: float = 0.0) -> void:
-	if not streams.has(id):
+	var stream := _get_stream(id)
+	if stream == null:
 		return
 	var player := players[next_player]
 	next_player = (next_player + 1) % players.size()
-	player.stream = streams[id]
+	player.stream = stream
 	player.volume_db = volume_db
 	player.play()
+
+
+func _get_stream(id: String) -> AudioStreamWAV:
+	if streams.has(id):
+		return streams[id]
+	var stream := _build_stream(id)
+	if stream != null:
+		streams[id] = stream
+	return stream
+
+
+func _build_stream(id: String) -> AudioStreamWAV:
+	match id:
+		"decide":
+			return _tone(880.0, 0.06, "square", 0.45)
+		"dice_tick":
+			return _tone(1400.0, 0.025, "square", 0.3)
+		"dice_land":
+			return _sequence([392.0, 523.25], 0.09, "square", 0.5)
+		"hit":
+			return _tone(180.0, 0.05, "square", 0.5)
+		"damage":
+			return _noise_burst(0.12, 0.5)
+		"heal":
+			return _sequence([523.25, 659.25, 783.99], 0.07, "sine", 0.4)
+		"gold":
+			return _sequence([1046.5, 1318.5], 0.06, "square", 0.35)
+		"danger":
+			return _sequence([246.94, 220.0], 0.1, "square", 0.42)
+		"victory":
+			return _sequence([523.25, 659.25, 783.99, 1046.5], 0.11, "sine", 0.45)
+		"defeat":
+			return _sequence([392.0, 329.63, 261.63], 0.16, "sine", 0.4)
+		_:
+			return null
 
 
 func _make_wav(sample_count: int) -> AudioStreamWAV:
