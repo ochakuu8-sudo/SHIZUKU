@@ -3,7 +3,9 @@ extends Control
 const UI_FONT := preload("res://assets/fonts/NotoSansCJKjp-Regular.otf")
 const BOARD_MAP_SCRIPT := preload("res://scripts/BoardMap.gd")
 const DICE_WIDGET_SCRIPT := preload("res://scripts/DiceWidget.gd")
+const PIECE_WIDGET_SCRIPT := preload("res://scripts/PieceWidget.gd")
 const MAP_NODE_SIZE := Vector2(104, 62)
+const PIECE_SIZE := Vector2(30, 30)
 
 const SPACE_COLORS := {
 	"start": Color("#4f9470"),
@@ -29,6 +31,10 @@ var map_dragging := false
 var map_scroll_tween: Tween
 var bar_tweens: Dictionary = {}
 var flash_tweens: Dictionary = {}
+
+var piece_widget
+var piece_target_id := -1
+var piece_hop_tween: Tween
 
 var dice_widget
 var dice_rng := RandomNumberGenerator.new()
@@ -182,6 +188,7 @@ func _build_top_bar() -> Control:
 	var load_button := _make_utility_button("Load")
 	load_button.pressed.connect(func() -> void:
 		last_centered_position = -1
+		piece_target_id = -1
 		game_state.load_game()
 	)
 	header.add_child(load_button)
@@ -224,6 +231,12 @@ func _build_map_panel() -> Control:
 		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		board_map.add_child(button)
 		board_buttons.append(button)
+
+	piece_widget = PIECE_WIDGET_SCRIPT.new()
+	piece_widget.custom_minimum_size = PIECE_SIZE
+	piece_widget.size = PIECE_SIZE
+	piece_widget.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_map.add_child(piece_widget)
 	return map_panel
 
 
@@ -477,6 +490,7 @@ func _render() -> void:
 		button.add_theme_stylebox_override("hover", _button_style(base_color.lightened(0.12), is_current or is_option, 12))
 		button.add_theme_stylebox_override("pressed", _button_style(base_color.darkened(0.08), is_current or is_option, 12))
 	_center_current_space(position)
+	_update_piece_position(position)
 
 	if game_state.is_in_battle():
 		var enemy: Dictionary = game_state.battle.get("enemy", {})
@@ -733,6 +747,7 @@ func _build_new_game_confirm() -> void:
 	new_game_confirm.dialog_text = "現在の進行状況は失われます。新規ゲームを開始しますか？"
 	new_game_confirm.confirmed.connect(func() -> void:
 		last_centered_position = -1
+		piece_target_id = -1
 		game_state.new_game()
 	)
 	add_child(new_game_confirm)
@@ -989,6 +1004,36 @@ func _apply_map_center(center: Vector2, animate: bool = true) -> void:
 	map_scroll_tween.set_parallel(true)
 	map_scroll_tween.tween_property(board_scroll, "scroll_horizontal", target_h, 0.45).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	map_scroll_tween.tween_property(board_scroll, "scroll_vertical", target_v, 0.45).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+
+func _update_piece_position(position: int) -> void:
+	var space: Dictionary = game_state.get_space_by_id(position)
+	if space.is_empty():
+		return
+	var target_position: Vector2 = board_map.get_space_center(space) - piece_widget.size * 0.5
+
+	if piece_target_id == -1:
+		piece_widget.position = target_position
+		piece_target_id = position
+		return
+	if position == piece_target_id:
+		return
+
+	var start_position: Vector2 = piece_widget.position
+	piece_target_id = position
+	_play_sfx("step")
+
+	if piece_hop_tween != null and piece_hop_tween.is_valid():
+		piece_hop_tween.kill()
+	piece_hop_tween = create_tween()
+	piece_hop_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	piece_hop_tween.tween_method(
+		func(t: float) -> void:
+			var hop_offset := sin(t * PI) * 14.0
+			piece_widget.position = start_position.lerp(target_position, t) - Vector2(0, hop_offset),
+		0.0, 1.0, 0.4
+	)
+	piece_hop_tween.tween_callback(func() -> void: _bounce(piece_widget))
 
 
 func _set_bar(bar: ProgressBar, value: int, max_value: int, key: String) -> void:

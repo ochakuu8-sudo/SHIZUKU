@@ -50,6 +50,8 @@ func _build_stream(id: String) -> AudioStreamWAV:
 			return _tone(1400.0, 0.025, "square", 0.3)
 		"dice_land":
 			return _sequence([392.0, 523.25], 0.09, "square", 0.5)
+		"step":
+			return _tone(660.0, 0.045, "square", 0.35)
 		"hit":
 			return _tone(180.0, 0.05, "square", 0.5)
 		"damage":
