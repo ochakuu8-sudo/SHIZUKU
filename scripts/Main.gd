@@ -573,13 +573,17 @@ func _render_route_choices() -> void:
 		route_status.text = "進む先を選んでください。危険な道ほど報酬も大きくなります。"
 
 	var selected_id := int(game_state.player.get("selected_next_id", -1))
+	var previous_id := int(game_state.player.get("previous_position", -1))
 	for raw_option in options:
 		var option: Dictionary = raw_option
 		var next_id := int(option.get("id", -1))
 		var label := String(option.get("route_label", option.get("label", "ルート")))
 		var type_name := String(option.get("type", ""))
 		var button := _make_button(label, SPACE_COLORS.get(type_name, Color("#5572a8")), true)
-		button.text = "%s\n%s" % [label, _route_hint(option)]
+		var hint := _route_hint(option)
+		if next_id == previous_id:
+			hint = "%s / 来た道を戻る" % hint
+		button.text = "%s\n%s" % [label, hint]
 		button.custom_minimum_size = Vector2(0, 54)
 		button.add_theme_font_size_override("font_size", 15)
 		button.tooltip_text = String(option.get("description", ""))

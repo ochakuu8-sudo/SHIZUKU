@@ -69,13 +69,19 @@ func _draw() -> void:
 
 	for space in _get_spaces():
 		var from_space: Dictionary = space
+		var from_id := int(from_space.get("id", -1))
 		for next_id in _get_next_ids(from_space):
-			var to_space: Dictionary = _get_space_by_id(next_id)
+			var to_id := int(next_id)
+			if to_id <= from_id:
+				# next_ids は双方向(無向グラフ)なので、id の大小で片方向だけ描画し
+				# 同じ道を二重に描かないようにする。
+				continue
+			var to_space: Dictionary = _get_space_by_id(to_id)
 			if to_space.is_empty():
 				continue
 			var from_center := get_space_center(from_space)
 			var to_center := get_space_center(to_space)
-			var is_active := int(from_space.get("id", -1)) == current_space_id or route_option_ids.has(int(to_space.get("id", -1)))
+			var is_active := from_id == current_space_id or to_id == current_space_id or route_option_ids.has(to_id) or route_option_ids.has(from_id)
 			draw_line(from_center + Vector2(0, 5), to_center + Vector2(0, 5), Color("#080b11"), 18.0, true)
 			draw_line(from_center, to_center, Color("#384253") if is_active else Color("#252e3d"), 9.0, true)
 			draw_line(from_center, to_center, Color("#f2ca69") if is_active else Color("#566173"), 3.0, true)

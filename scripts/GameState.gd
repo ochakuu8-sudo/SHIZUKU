@@ -89,6 +89,7 @@ func new_game(forced_board: Dictionary = {}) -> void:
 		"day": 1,
 		"turn": 0,
 		"position": 0,
+		"previous_position": -1,
 		"selected_next_id": -1,
 		"finished": false,
 		"hp": int(base.get("max_hp", 100)),
@@ -160,16 +161,32 @@ func get_next_ids(space: Dictionary) -> Array:
 	return ids
 
 
+func get_movable_neighbors(space: Dictionary, exclude_id: int = -1) -> Array:
+	# next_ids は双方向のつながり(道)を表す。exclude_id には直前にいたマスを
+	# 渡すことで、「来た道をそのまま引き返すだけ」を自動歩行の判定から除外する。
+	var ids: Array = []
+	for raw_id in get_next_ids(space):
+		var id := int(raw_id)
+		if id != exclude_id:
+			ids.append(id)
+	return ids
+
+
 func get_route_options() -> Array:
 	if player.is_empty() or is_in_battle() or bool(player.get("finished", false)):
 		return []
 
-	var next_ids := get_next_ids(get_current_space())
-	if next_ids.size() <= 1:
+	var current := get_current_space()
+	if String(current.get("type", "")) == "boss":
 		return []
 
+	var previous_id := int(player.get("previous_position", -1))
+	if get_movable_neighbors(current, previous_id).size() <= 1:
+		return []
+
+	# 実際に選択肢として見せる時は、来た道を戻る選択も含めて自由に選べるようにする。
 	var options: Array = []
-	for next_id in next_ids:
+	for next_id in get_next_ids(current):
 		var space := get_space_by_id(int(next_id))
 		if not space.is_empty():
 			options.append(space)
@@ -177,8 +194,13 @@ func get_route_options() -> Array:
 
 
 func needs_route_choice() -> bool:
-	var next_ids := get_next_ids(get_current_space())
-	return next_ids.size() > 1
+	if is_in_battle() or bool(player.get("finished", false)):
+		return false
+	var current := get_current_space()
+	if String(current.get("type", "")) == "boss":
+		return false
+	var previous_id := int(player.get("previous_position", -1))
+	return get_movable_neighbors(current, previous_id).size() > 1
 
 
 func get_pending_steps() -> int:
@@ -234,12 +256,11 @@ func advance_route(steps: int = 1) -> void:
 		changed.emit()
 		return
 
-	var next_ids := get_next_ids(get_current_space())
-	if next_ids.is_empty():
-		player["finished"] = true
-		add_log("ルートの終点に到着しました。")
+	if String(get_current_space().get("type", "")) == "boss":
+		add_log("ここが旅の終点です。")
 		changed.emit()
 		return
+
 	_advance_steps(maxi(1, steps))
 
 
@@ -248,14 +269,25 @@ func _advance_steps(steps: int) -> void:
 		if is_in_battle() or bool(player.get("finished", false)):
 			return
 
-		var current_next_ids := get_next_ids(get_current_space())
-		if current_next_ids.is_empty():
-			player["finished"] = true
-			add_log("ルートの終点に到着しました。")
-			changed.emit()
+		var current_space := get_current_space()
+		if String(current_space.get("type", "")) == "boss":
+			# ボスマスは足を止めて戦闘になるマスなので、ここから先へは進めない。
 			return
 
-		if current_next_ids.size() > 1:
+		var previous_id := int(player.get("previous_position", -1))
+		var forward_ids := get_movable_neighbors(current_space, previous_id)
+
+		if forward_ids.is_empty():
+			# 行き止まり(来た道以外につながっていない)。踏破完了ではなく、
+			# 戻る以外に道が無いので出目を使って来た道を引き返す。
+			forward_ids = get_next_ids(current_space)
+			if forward_ids.is_empty():
+				# 盤面生成上は起こらないはずだが、万一孤立したマスに来た場合の保険。
+				add_log("行き止まりです。")
+				changed.emit()
+				return
+
+		if forward_ids.size() > 1:
 			pending_steps = steps - i
 			if pending_steps > 1:
 				add_log("分岐に到達。ルートを選ぶと残り%dマス分そのまま進みます。" % (pending_steps - 1))
@@ -264,7 +296,7 @@ func _advance_steps(steps: int) -> void:
 			changed.emit()
 			return
 
-		var next_id := int(current_next_ids[0])
+		var next_id: int = forward_ids[0]
 		var is_final_step := i == steps - 1
 		_move_to_space(next_id, is_final_step)
 		if int(player.get("position", -1)) != next_id:
@@ -297,7 +329,9 @@ func _move_to_space(next_id: int, resolve_effects: bool = true) -> void:
 		changed.emit()
 		return
 
+	var previous_id := int(player.get("position", -1))
 	player["selected_next_id"] = -1
+	player["previous_position"] = previous_id
 	player["position"] = next_id
 	player["turn"] = int(player.get("turn", 0)) + 1
 	add_log("%s に進みました。" % next_space.get("label", "マス"))
@@ -311,9 +345,11 @@ func _move_to_space(next_id: int, resolve_effects: bool = true) -> void:
 
 	# サイコロの出目の途中で通過するだけのマスではイベント/戦闘/育成などの
 	# マス効果までは発生させない(本来のすごろくで止まった時だけ効果が起きるのと同じ)。
-	# ただし分岐点や終点(next_idsが1つでない)は、出目が余っていても必ずそこで
-	# 足を止めるマスなので常に解決する。
-	var should_resolve := resolve_effects or get_next_ids(next_space).size() != 1
+	# ただし分岐点(来た道を除いて2方向以上に進める)、行き止まり、ボスマスは、
+	# 出目が余っていても必ずそこで足を止めるので常に解決する。
+	var type_name := String(next_space.get("type", ""))
+	var forward_count := get_movable_neighbors(next_space, previous_id).size()
+	var should_resolve := resolve_effects or type_name == "boss" or forward_count != 1
 	if should_resolve:
 		_resolve_space(next_space)
 	changed.emit()
@@ -483,6 +519,7 @@ func _handle_defeat(enemy: Dictionary) -> void:
 	player["hp"] = 1
 	player["gold"] = max(0, int(player.get("gold", 0)) - 10)
 	player["position"] = int(board_data.get("start_id", 0))
+	player["previous_position"] = -1
 	player["danger"] = 0
 	player["route_profile"] = "balanced"
 	battle.clear()
@@ -629,7 +666,7 @@ func _win_battle() -> void:
 	_play_sfx("victory")
 	battle.clear()
 	var current_space := get_current_space()
-	if String(current_space.get("type", "")) == "boss" and get_next_ids(current_space).is_empty():
+	if String(current_space.get("type", "")) == "boss":
 		player["finished"] = true
 		add_log("ルートを踏破しました。")
 		_show_route_clear()
@@ -736,6 +773,8 @@ func _ensure_player_route_fields() -> void:
 		player["stats"].erase("bond")
 	if not player.has("position") or get_space_by_id(int(player.get("position", -1))).is_empty():
 		player["position"] = int(board_data.get("start_id", 0))
+	if not player.has("previous_position"):
+		player["previous_position"] = -1
 	if not player.has("selected_next_id"):
 		player["selected_next_id"] = -1
 	if not player.has("finished"):

@@ -1,16 +1,16 @@
 extends RefCounted
-## 桃鉄風に、盤面をグリッド状に東西南北へ広げてランダム生成する。
-## data/board.json の設定を使い、GameState.new_game() から呼ばれる。
+## 桃鉄風に、盤面をグリッド状に敷き詰めて生成する。マス同士のつながりは
+## 双方向(無向グラフ)で、プレイヤーは分岐のたびに東西南北どちらへでも
+## 自分で進む方向を選べる。data/board.json の設定を使い、
+## GameState.new_game() から呼ばれる。
 ##
 ## 生成方式:
 ## - 盤面を columns x rows の格子とし、格子点(x, y)がそのままマスになる(間引きしない)。
-## - 開始マスは左上(0, 0)、ボスは対角の右下(columns-1, rows-1)に置く。
-## - この格子では「開始マスからの最短距離」が常に x + y と一意に定まるので、
-##   隣接する格子点同士(右隣・下隣)だけをつなぎ、距離が小さい方から大きい方へ
-##   一方向にのみ辺を張る。これでループの無いグラフ(DAG)を保証しつつ、
-##   上下左右どの隣とも(右か下かという形で)つながるマス目状のネットワークになる。
-## - 辺は確率的に間引いて分岐/合流だらけの網目にしつつ、間引きすぎて
-##   到達不能・意図しない行き止まりが生まれないよう最後に救済する。
+## - 各マスは右隣・下隣の候補との間で、確率的に道(辺)を生成する。
+##   道は双方向につながる(A→Bだけでなく B→A の next_ids にも入る)。
+## - それだけでは盤面が分断されることがあるため、スタートから辿り着けない
+##   マスが無くなるまで、救済の道を追加してつなぎ直す。
+## - 開始マスは左上、ボスはスタートからグラフ上の距離が最も遠いマスに置く。
 
 
 static func generate(theme: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
@@ -19,71 +19,37 @@ static func generate(theme: Dictionary, rng: RandomNumberGenerator) -> Dictionar
 	var rows: int = maxi(3, int(grid.get("rows", 7)))
 	var edge_keep_chance: float = clampf(float(grid.get("edge_keep_chance", 0.62)), 0.05, 1.0)
 
-	var out_edges: Dictionary = {}
-	var in_degree: Dictionary = {}
+	var neighbors: Dictionary = {} # id -> Array[int] (双方向のつながり)
 	for y in range(rows):
 		for x in range(columns):
-			var id := _id_at(x, y, columns)
-			out_edges[id] = []
-			in_degree[id] = 0
+			neighbors[_id_at(x, y, columns)] = []
 
-	# 右隣・下隣とだけ辺の候補を作る(距離は必ず+1で増えるので向きが一意に決まり、
-	# ループが生まれない)。
 	for y in range(rows):
 		for x in range(columns):
 			if x + 1 < columns and rng.randf() <= edge_keep_chance:
-				_add_edge(out_edges, in_degree, _id_at(x, y, columns), _id_at(x + 1, y, columns))
+				_link(neighbors, _id_at(x, y, columns), _id_at(x + 1, y, columns))
 			if y + 1 < rows and rng.randf() <= edge_keep_chance:
-				_add_edge(out_edges, in_degree, _id_at(x, y, columns), _id_at(x, y + 1, columns))
+				_link(neighbors, _id_at(x, y, columns), _id_at(x, y + 1, columns))
 
-	# 間引きすぎて孤立したマスを救済する: 入次数0(開始マス以外)なら、
-	# 格子上で距離が1小さい隣(左 or 上)のどちらかと強制的につなぐ。
-	for y in range(rows):
-		for x in range(columns):
-			if x == 0 and y == 0:
-				continue
-			var id := _id_at(x, y, columns)
-			if int(in_degree.get(id, 0)) > 0:
-				continue
-			var lower_neighbors: Array = []
-			if x > 0:
-				lower_neighbors.append(_id_at(x - 1, y, columns))
-			if y > 0:
-				lower_neighbors.append(_id_at(x, y - 1, columns))
-			var source_id: int = lower_neighbors[rng.randi_range(0, lower_neighbors.size() - 1)]
-			_add_edge(out_edges, in_degree, source_id, id)
+	var start_id := _id_at(0, 0, columns)
+	_ensure_connected(neighbors, start_id, columns, rows, rng)
 
-	# 出次数0(ボス以外)なら、距離が1大きい隣(右 or 下)のどちらかと強制的につなぐ。
-	for y in range(rows):
-		for x in range(columns):
-			if x == columns - 1 and y == rows - 1:
-				continue
-			var id := _id_at(x, y, columns)
-			if not out_edges[id].is_empty():
-				continue
-			var higher_neighbors: Array = []
-			if x + 1 < columns:
-				higher_neighbors.append(_id_at(x + 1, y, columns))
-			if y + 1 < rows:
-				higher_neighbors.append(_id_at(x, y + 1, columns))
-			var target_id: int = higher_neighbors[rng.randi_range(0, higher_neighbors.size() - 1)]
-			_add_edge(out_edges, in_degree, id, target_id)
+	var distances := _bfs_distances(neighbors, start_id)
+	var boss_id := _pick_farthest(distances, columns, rows)
 
 	var spaces: Array = []
 	for y in range(rows):
 		for x in range(columns):
 			var id := _id_at(x, y, columns)
-			var is_start := x == 0 and y == 0
-			var is_boss := x == columns - 1 and y == rows - 1
 			var space := {
 				"id": id,
 				"x": x,
 				"y": y,
-				"next_ids": out_edges[id].duplicate(),
+				"next_ids": neighbors[id].duplicate(),
 			}
-			if is_start:
+			if id == start_id:
 				_fill_start_tile(space, theme)
-			elif is_boss:
+			elif id == boss_id:
 				_fill_boss_tile(space, theme, rng)
 			else:
 				_fill_regular_tile(space, theme, rng)
@@ -94,7 +60,7 @@ static func generate(theme: Dictionary, rng: RandomNumberGenerator) -> Dictionar
 	return {
 		"width": columns,
 		"height": rows,
-		"start_id": _id_at(0, 0, columns),
+		"start_id": start_id,
 		"spaces": spaces,
 	}
 
@@ -103,11 +69,99 @@ static func _id_at(x: int, y: int, columns: int) -> int:
 	return y * columns + x
 
 
-static func _add_edge(out_edges: Dictionary, in_degree: Dictionary, from_id: int, to_id: int) -> void:
-	if out_edges[from_id].has(to_id):
-		return
-	out_edges[from_id].append(to_id)
-	in_degree[to_id] = int(in_degree.get(to_id, 0)) + 1
+static func _link(neighbors: Dictionary, a: int, b: int) -> void:
+	if not neighbors[a].has(b):
+		neighbors[a].append(b)
+	if not neighbors[b].has(a):
+		neighbors[b].append(a)
+
+
+static func _grid_neighbors_of(id: int, columns: int, rows: int) -> Array:
+	var x := id % columns
+	var y := id / columns
+	var result: Array = []
+	if x > 0:
+		result.append(_id_at(x - 1, y, columns))
+	if x + 1 < columns:
+		result.append(_id_at(x + 1, y, columns))
+	if y > 0:
+		result.append(_id_at(x, y - 1, columns))
+	if y + 1 < rows:
+		result.append(_id_at(x, y + 1, columns))
+	return result
+
+
+static func _ensure_connected(neighbors: Dictionary, start_id: int, columns: int, rows: int, rng: RandomNumberGenerator) -> void:
+	var total: int = columns * rows
+
+	# まず、道が1本も残らなかったマス(スタート自身を含む)を直接救済する。
+	# これを先にやらないと、スタートが孤立したまま偶然つながるのを運任せにしてしまう。
+	for id in neighbors.keys():
+		if not neighbors[id].is_empty():
+			continue
+		var candidates := _grid_neighbors_of(int(id), columns, rows)
+		if candidates.is_empty():
+			continue
+		var target: int = candidates[rng.randi_range(0, candidates.size() - 1)]
+		_link(neighbors, int(id), target)
+
+	# その上で、複数の孤立した島ができていないか(スタートから辿り着けるか)を
+	# BFSで確認し、辿り着けないマスがあれば繰り返しつなぎ直す。
+	for attempt in range(total):
+		var reached := _bfs_reachable(neighbors, start_id)
+		if reached.size() >= total:
+			return
+		for id in neighbors.keys():
+			if reached.has(id):
+				continue
+			var candidates := _grid_neighbors_of(id, columns, rows)
+			if candidates.is_empty():
+				continue
+			var target: int = candidates[rng.randi_range(0, candidates.size() - 1)]
+			_link(neighbors, id, target)
+
+
+static func _bfs_reachable(neighbors: Dictionary, start_id: int) -> Dictionary:
+	var visited: Dictionary = {}
+	var queue: Array = [start_id]
+	while not queue.is_empty():
+		var current: int = queue.pop_front()
+		if visited.has(current):
+			continue
+		visited[current] = true
+		for next_id in neighbors.get(current, []):
+			if not visited.has(next_id):
+				queue.append(next_id)
+	return visited
+
+
+static func _bfs_distances(neighbors: Dictionary, start_id: int) -> Dictionary:
+	var distances: Dictionary = {start_id: 0}
+	var queue: Array = [start_id]
+	while not queue.is_empty():
+		var current: int = queue.pop_front()
+		var current_dist: int = distances[current]
+		for next_id in neighbors.get(current, []):
+			if not distances.has(next_id):
+				distances[next_id] = current_dist + 1
+				queue.append(next_id)
+	return distances
+
+
+static func _pick_farthest(distances: Dictionary, columns: int, rows: int) -> int:
+	var best_id := 0
+	var best_dist := -1
+	var best_tiebreak := -1
+	for id in distances.keys():
+		var d: int = distances[id]
+		var x: int = int(id) % columns
+		var y: int = int(id) / columns
+		var tiebreak := x + y
+		if d > best_dist or (d == best_dist and tiebreak > best_tiebreak):
+			best_dist = d
+			best_tiebreak = tiebreak
+			best_id = int(id)
+	return best_id
 
 
 static func _fill_start_tile(space: Dictionary, theme: Dictionary) -> void:
@@ -150,30 +204,22 @@ static func _fill_regular_tile(space: Dictionary, theme: Dictionary, rng: Random
 
 
 static func _assign_route_profiles(spaces: Array, theme: Dictionary, rng: RandomNumberGenerator) -> void:
+	# 分岐でどちらに進んでも見た目のルート特性が伝わるよう、拠点/ボス以外の
+	# 全マスに(出現頻度が偏らないよう束をシャッフルしながら)ルート特性を割り振る。
 	var route_profiles: Array = theme.get("route_profiles", ["safe", "training", "danger", "reward", "recovery"])
 	if route_profiles.is_empty():
 		return
 
-	var assigned: Dictionary = {}
-	var pool: Array = route_profiles.duplicate()
-	pool.shuffle()
+	var pool: Array = []
 	for space in spaces:
-		var ids: Array = space.get("next_ids", [])
-		if ids.size() <= 1:
+		var type_name := String(space.get("type", ""))
+		if type_name == "start" or type_name == "boss":
 			continue
-		for target_id in ids:
-			if assigned.has(target_id):
-				continue
-			if pool.is_empty():
-				pool = route_profiles.duplicate()
-				pool.shuffle()
-			assigned[target_id] = pool.pop_back()
-
-	for space in spaces:
-		var id: int = int(space.get("id", -1))
-		if assigned.has(id):
-			space["route_profile"] = assigned[id]
-			space["route_label"] = "%sへ" % String(space.get("label", "道"))
+		if pool.is_empty():
+			pool = route_profiles.duplicate()
+			pool.shuffle()
+		space["route_profile"] = pool.pop_back()
+		space["route_label"] = "%sへ" % String(space.get("label", "道"))
 
 
 static func _weighted_pick(weights: Dictionary, rng: RandomNumberGenerator) -> String:

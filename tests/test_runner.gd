@@ -16,8 +16,10 @@ func _init() -> void:
 	_test_train_all_respects_route_profile_bonus()
 	_test_exhaustion_defeat_returns_to_start()
 	_test_load_game_repairs_missing_fields()
-	_test_multi_step_move_lands_exactly_on_fork()
-	_test_multi_step_move_skips_intermediate_effects()
+	_test_auto_continue_skips_backtrack_option()
+	_test_free_choice_fork_offers_all_non_backtrack_neighbors()
+	_test_boss_always_stops_even_as_a_pass_through_tile()
+	_test_backtrack_into_dead_end_turns_around_instead_of_finishing()
 	_test_multi_step_move_stops_early_at_fork_and_carries_remainder()
 	_test_save_load_preserves_generated_board()
 
@@ -46,29 +48,38 @@ func _new_game_state() -> Node:
 	return gs
 
 
-func _make_test_board() -> Dictionary:
-	# 分岐ロジックだけをピンポイントで検証するための、決め打ちの小さな盤面。
-	# start(0) -> 1(train,all) -> 2(event,story) -> 3(fork) -> [10, 20] -> 11(boss)
-	return {
-		"width": 6, "height": 3, "start_id": 0,
-		"spaces": [
-			{"id": 0, "x": 0, "y": 1, "type": "start", "label": "START", "description": "", "next_ids": [1]},
-			{"id": 1, "x": 1, "y": 1, "type": "train", "label": "鍛錬", "stat": "all", "description": "", "next_ids": [2]},
-			{"id": 2, "x": 2, "y": 1, "type": "event", "label": "出来事", "category": "story", "description": "", "next_ids": [3]},
-			{"id": 3, "x": 3, "y": 1, "type": "fork", "label": "分岐", "description": "", "next_ids": [10, 20]},
-			{"id": 10, "x": 4, "y": 0, "type": "train", "label": "上ルート", "stat": "str", "description": "", "next_ids": [11]},
-			{"id": 11, "x": 5, "y": 0, "type": "boss", "label": "試練", "description": "", "next_ids": []},
-			{"id": 20, "x": 4, "y": 2, "type": "train", "label": "下ルート", "stat": "charm", "description": "", "next_ids": [11]},
-		],
-	}
-
-
 func _new_game_state_with_board(board: Dictionary) -> Node:
 	var gs := GameStateScript.new()
 	root.add_child(gs)
 	gs.load_content()
 	gs.new_game(board)
 	return gs
+
+
+func _make_pass_through_board() -> Dictionary:
+	# 0(start) -- 1(素通りするだけの中継マス。次数2だが後戻り除外で実質1方向) -- 2(boss)
+	return {
+		"width": 3, "height": 1, "start_id": 0,
+		"spaces": [
+			{"id": 0, "x": 0, "y": 0, "type": "start", "label": "START", "description": "", "next_ids": [1]},
+			{"id": 1, "x": 1, "y": 0, "type": "train", "label": "中継", "stat": "str", "description": "", "next_ids": [0, 2]},
+			{"id": 2, "x": 2, "y": 0, "type": "boss", "label": "試練", "description": "", "next_ids": [1]},
+		],
+	}
+
+
+func _make_diamond_board() -> Dictionary:
+	# 0(start) -- 1(分岐: 後戻りを除いても2と3の2方向) -- {2, 3} -- 4(boss)
+	return {
+		"width": 3, "height": 3, "start_id": 0,
+		"spaces": [
+			{"id": 0, "x": 0, "y": 1, "type": "start", "label": "START", "description": "", "next_ids": [1]},
+			{"id": 1, "x": 1, "y": 1, "type": "fork", "label": "分岐", "description": "", "next_ids": [0, 2, 3]},
+			{"id": 2, "x": 2, "y": 0, "type": "train", "label": "上ルート", "stat": "str", "description": "", "next_ids": [1, 4]},
+			{"id": 3, "x": 2, "y": 2, "type": "train", "label": "下ルート", "stat": "charm", "description": "", "next_ids": [1, 4]},
+			{"id": 4, "x": 3, "y": 1, "type": "boss", "label": "試練", "description": "", "next_ids": [2, 3]},
+		],
+	}
 
 
 func _next_ids_of(spaces: Array, id: int) -> Array:
@@ -94,6 +105,13 @@ func _test_board_generator_produces_valid_graph() -> void:
 			for next_id in space.get("next_ids", []):
 				_assert(ids.has(int(next_id)), "trial %d: space %s references missing next_id %s" % [trial, space.get("id"), next_id])
 
+		# 双方向グラフであること: AがBにつながっているなら、BもAにつながっている。
+		for space in spaces:
+			var from_id := int(space.get("id", -1))
+			for next_id in space.get("next_ids", []):
+				var reverse_ids: Array = _next_ids_of(spaces, int(next_id))
+				_assert(reverse_ids.has(from_id), "trial %d: edge %d->%d should also exist as %d->%d (undirected)" % [trial, from_id, next_id, next_id, from_id])
+
 		var start_id := int(board.get("start_id", 0))
 		var visited := {}
 		var queue := [start_id]
@@ -107,21 +125,17 @@ func _test_board_generator_produces_valid_graph() -> void:
 					queue.append(int(next_id))
 		for space in spaces:
 			_assert(visited.has(int(space.get("id", -1))), "trial %d: space %s is unreachable from start_id" % [trial, space.get("id", "?")])
+			_assert(not space.get("next_ids", []).is_empty(), "trial %d: space %s has no connections at all" % [trial, space.get("id", "?")])
 
-		var dead_ends := 0
 		var boss_count := 0
-		var fork_count := 0
+		var branch_count := 0
 		for space in spaces:
-			var next_ids: Array = space.get("next_ids", [])
-			if next_ids.is_empty():
-				dead_ends += 1
 			if String(space.get("type", "")) == "boss":
 				boss_count += 1
-			if next_ids.size() > 1:
-				fork_count += 1
-		_assert(dead_ends == 1, "trial %d: expected exactly one dead end (the boss tile), got %d" % [trial, dead_ends])
+			if space.get("next_ids", []).size() > 1:
+				branch_count += 1
 		_assert(boss_count == 1, "trial %d: expected exactly one boss tile, got %d" % [trial, boss_count])
-		_assert(fork_count > 0, "trial %d: expected at least one branching tile in a packed board" % trial)
+		_assert(branch_count > 0, "trial %d: expected at least one branching tile in a packed board" % trial)
 
 	gs.queue_free()
 
@@ -175,47 +189,76 @@ func _test_exhaustion_defeat_returns_to_start() -> void:
 
 	_assert(int(gs.player.get("hp", 0)) == 1, "exhaustion defeat should leave hp at 1 (got %d)" % int(gs.player.get("hp", 0)))
 	_assert(int(gs.player.get("position", -1)) == int(gs.board_data.get("start_id", 0)), "exhaustion defeat should send the player back to start_id")
+	_assert(int(gs.player.get("previous_position", -99)) == -1, "exhaustion defeat should clear previous_position")
 	gs.queue_free()
 
 
-func _test_multi_step_move_lands_exactly_on_fork() -> void:
-	var gs := _new_game_state_with_board(_make_test_board())
-	gs.advance_route(3)
-	_assert(int(gs.player.get("position", -1)) == 3, "advance_route(3) from start should land exactly on the fork (id 3)")
-	_assert(gs.needs_route_choice(), "landing on a fork should require a route choice")
-	_assert(gs.get_pending_steps() == 0, "no dice pips should remain when the fork is reached exactly")
+func _test_auto_continue_skips_backtrack_option() -> void:
+	# マス1は次数2(0と2)だが、0から来た場合は後戻り除外で実質1方向しか無いので、
+	# 足を止めずに素通りするはず(=マス1の育成効果は発生しない)。
+	var gs := _new_game_state_with_board(_make_pass_through_board())
+	var before_str := int(gs.player["stats"].get("str", 0))
+
+	gs.advance_route(2)
+
+	_assert(int(gs.player["stats"].get("str", 0)) == before_str, "passing through a degree-2 waypoint (excluding backtrack) should not trigger its train effect")
+	_assert(int(gs.player.get("position", -1)) == 2, "should have walked all the way to the boss tile (got %d)" % int(gs.player.get("position", -1)))
 	gs.queue_free()
 
 
-func _test_multi_step_move_skips_intermediate_effects() -> void:
-	# 出目3で 1(train, stat=all) と 2(event, category=story) を「通過」するだけなら、
-	# それらのマス効果(育成/イベント)は発生しないはず。
-	var gs := _new_game_state_with_board(_make_test_board())
-	var before_stats: Dictionary = gs.player["stats"].duplicate(true)
-	var before_gallery_size: int = gs.player["gallery"].size()
+func _test_free_choice_fork_offers_all_non_backtrack_neighbors() -> void:
+	var gs := _new_game_state_with_board(_make_diamond_board())
+	gs.advance_route(2)
 
+	_assert(int(gs.player.get("position", -1)) == 1, "should stop at the branching tile (id 1), got %d" % int(gs.player.get("position", -1)))
+	_assert(gs.needs_route_choice(), "a tile with 2 forward options (excluding backtrack) should require a choice")
+
+	var option_ids: Array = []
+	for option in gs.get_route_options():
+		option_ids.append(int(option.get("id", -1)))
+	_assert(option_ids.has(2) and option_ids.has(3), "both non-backtrack directions should be offered (got %s)" % [option_ids])
+
+	gs.choose_route(3)
+	_assert(int(gs.player.get("position", -1)) == 3, "choosing route 3 should move the player there (got %d)" % int(gs.player.get("position", -1)))
+	gs.queue_free()
+
+
+func _test_boss_always_stops_even_as_a_pass_through_tile() -> void:
+	# マス1から見てボス(2)は唯一の前進方向なので、素通りロジック的には
+	# 「1マスだから素通り」に見えてしまいかねないが、ボスは種別で必ず足を止める。
+	var gs := _new_game_state_with_board(_make_pass_through_board())
+	gs.advance_route(5)
+
+	_assert(int(gs.player.get("position", -1)) == 2, "should have reached the boss tile (got %d)" % int(gs.player.get("position", -1)))
+	_assert(gs.is_in_battle(), "landing on the boss tile should always start a battle, even with leftover dice pips")
+	gs.queue_free()
+
+
+func _test_backtrack_into_dead_end_turns_around_instead_of_finishing() -> void:
+	# 分岐(1)まで出目3で到達し(1マス分保留)、あえて後戻り(0)を選ぶ。
+	# start(0)は次数1(1としかつながっていない)ので、後戻り除外だと行き場が無い。
+	# これを「踏破完了」と誤判定せず、来た道(1)へ引き返して残りの出目を消費するべき。
+	var gs := _new_game_state_with_board(_make_diamond_board())
 	gs.advance_route(3)
+	_assert(int(gs.player.get("position", -1)) == 1, "should be paused at the fork with 2 pips remaining")
+	_assert(gs.get_pending_steps() == 2, "expected 2 pending pips (got %d)" % gs.get_pending_steps())
 
-	var after_stats: Dictionary = gs.player["stats"]
-	for key in before_stats.keys():
-		_assert(int(after_stats.get(key, 0)) == int(before_stats.get(key, 0)),
-			"passing through an intermediate train tile should not change stats (%s)" % key)
-	_assert(gs.player["gallery"].size() == before_gallery_size,
-		"passing through an intermediate event tile should not add a gallery entry")
+	gs.choose_route(0)
+
+	_assert(not bool(gs.player.get("finished", false)), "backtracking into a dead end must not be mistaken for finishing the route")
+	_assert(int(gs.player.get("position", -1)) == 1, "should have turned around and walked back to 1 (got %d)" % int(gs.player.get("position", -1)))
 	gs.queue_free()
 
 
 func _test_multi_step_move_stops_early_at_fork_and_carries_remainder() -> void:
-	# 出目5なら、分岐(id3)に3マス目で到達し、2マス分が保留される。
-	# ルートを選ぶと、保留分(1マス)がそのまま消化されて id 10 -> id 11 まで進む。
-	var gs := _new_game_state_with_board(_make_test_board())
-	gs.advance_route(5)
-	_assert(int(gs.player.get("position", -1)) == 3, "advance_route(5) should stop at the fork with pips remaining")
-	_assert(gs.get_pending_steps() == 2, "2 pips (this fork choice + 1 more) should remain (got %d)" % gs.get_pending_steps())
+	var gs := _new_game_state_with_board(_make_diamond_board())
+	# 出目1で 0->1 に到達。マス1は後戻り除外で2方向あるので、そこで足を止める。
+	gs.advance_route(1)
+	_assert(int(gs.player.get("position", -1)) == 1, "advance_route(1) should stop at the fork (id 1)")
+	_assert(gs.get_pending_steps() == 0, "no pips should remain when the fork is reached exactly")
 
-	gs.choose_route(10)
-	_assert(gs.get_pending_steps() == 0, "pending steps should be consumed after choosing a route")
-	_assert(int(gs.player.get("position", -1)) == 11, "the remaining pip should carry the player from 10 to 11 (got %d)" % int(gs.player.get("position", -1)))
+	gs.choose_route(2)
+	_assert(int(gs.player.get("position", -1)) == 2, "choosing route 2 should move the player there")
 	gs.queue_free()
 
 
@@ -223,9 +266,11 @@ func _test_load_game_repairs_missing_fields() -> void:
 	var gs := _new_game_state()
 	gs.player.erase("gallery")
 	gs.player.erase("position")
+	gs.player.erase("previous_position")
 	gs._ensure_player_route_fields()
 	_assert(gs.player.get("gallery") is Array, "missing gallery field should be repaired to an empty array")
 	_assert(int(gs.player.get("position", -1)) == int(gs.board_data.get("start_id", 0)), "missing position field should be repaired to start_id")
+	_assert(int(gs.player.get("previous_position", -99)) == -1, "missing previous_position field should be repaired to -1")
 	gs.queue_free()
 
 
