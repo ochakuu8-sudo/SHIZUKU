@@ -1,65 +1,592 @@
 {
-  "grid": {
-    "columns": 9,
-    "rows": 7,
-    "extra_link_ratio": 0.05
-  },
-  "start": {
-    "label": "START",
-    "description": "旅の始まり。マス目が入り組んだルートを進みます。"
-  },
-  "boss": {
-    "labels": ["試練の間", "最終決戦", "王の間", "頂の祭壇"],
-    "description": "ルートの終点で大きな試練が始まります。"
-  },
-  "route_profiles": ["safe", "training", "danger", "reward", "recovery"],
-  "type_weights": {
-    "train": 25,
-    "event": 22,
-    "encounter": 25,
-    "rest": 14,
-    "shop": 14
-  },
-  "tiles": {
-    "train": {
-      "labels": ["鍛錬場", "道場", "修練の道", "訓練所", "鍛冶の道", "稽古場"],
-      "stats": ["str", "charm", "mind", "all"],
-      "descriptions": [
-        "旅の途中で体を鍛えました。",
-        "先達に稽古をつけてもらいました。",
-        "地道な鍛錬が力になっていきます。"
+  "width": 9,
+  "height": 5,
+  "start_id": 0,
+  "spaces": [
+    {
+      "id": 0,
+      "x": 0,
+      "y": 0,
+      "type": "start",
+      "label": "START",
+      "description": "旅の始まり。桃鉄風に敷き詰められたマス目を進みます。",
+      "next_ids": [
+        1
       ]
     },
-    "event": {
-      "labels": ["露店街", "旅人の噂", "静かな道", "賑わう市場", "古い祠", "峠の茶屋"],
-      "categories": ["daily", "resolve", "story"],
-      "descriptions": [
-        "小さな出来事が旅を彩ります。",
-        "道中でふと足を止めました。",
-        "旅先で新しい話を耳にしました。"
+    {
+      "id": 1,
+      "x": 1,
+      "y": 0,
+      "type": "train",
+      "label": "道場",
+      "description": "汗を流して自分を鍛える。",
+      "stat": "str",
+      "next_ids": [
+        0,
+        2
       ]
     },
-    "encounter": {
-      "labels": ["獣道", "伏兵", "荒れ地", "隘路", "森の奥", "崩れた橋"],
-      "strong_chance": 0.3,
-      "descriptions": [
-        "道中で敵の気配が近づいてきます。",
-        "行く手を阻む何かが潜んでいます。"
+    {
+      "id": 2,
+      "x": 2,
+      "y": 0,
+      "type": "event",
+      "label": "旅の一幕",
+      "description": "道中でちょっとした出来事に出会った。",
+      "category": "daily",
+      "next_ids": [
+        1,
+        3
       ]
     },
-    "rest": {
-      "labels": ["泉", "木陰", "茶屋", "野営地", "石畳の広場", "見晴らし台"],
-      "descriptions": [
-        "ひと息ついて体勢を立て直しました。",
-        "静かな場所で旅の疲れを癒します。"
+    {
+      "id": 3,
+      "x": 3,
+      "y": 0,
+      "type": "encounter",
+      "label": "野盗の襲撃",
+      "description": "行く手を阻む相手が現れた。",
+      "strong": false,
+      "route_profile": "danger",
+      "route_label": "野盗の襲撃へ",
+      "next_ids": [
+        2,
+        4,
+        14
       ]
     },
-    "shop": {
-      "labels": ["露店", "商店", "行商", "市場", "宝箱", "旅の道具屋"],
-      "descriptions": [
-        "旅の助けになるものを手に入れました。",
-        "掘り出し物を見つけました。"
+    {
+      "id": 4,
+      "x": 4,
+      "y": 0,
+      "type": "rest",
+      "label": "古い祠",
+      "description": "道中でふと足を止めた。静かな時間が心を落ち着けてくれる。",
+      "next_ids": [
+        3,
+        5
+      ]
+    },
+    {
+      "id": 5,
+      "x": 5,
+      "y": 0,
+      "type": "shop",
+      "label": "行商人",
+      "description": "旅の商人が品物を並べている。",
+      "next_ids": [
+        4,
+        6
+      ]
+    },
+    {
+      "id": 6,
+      "x": 6,
+      "y": 0,
+      "type": "train",
+      "label": "礼法教室",
+      "description": "所作を磨き、立ち居振る舞いに芯が通る。",
+      "stat": "charm",
+      "next_ids": [
+        5,
+        7
+      ]
+    },
+    {
+      "id": 7,
+      "x": 7,
+      "y": 0,
+      "type": "encounter",
+      "label": "見張りとの小競り合い",
+      "description": "気配を感じて身構える。",
+      "strong": false,
+      "next_ids": [
+        6,
+        8
+      ]
+    },
+    {
+      "id": 8,
+      "x": 8,
+      "y": 0,
+      "type": "event",
+      "label": "路傍の出会い",
+      "description": "何気ないやり取りが、後の糧になる。",
+      "category": "daily",
+      "next_ids": [
+        7,
+        9
+      ]
+    },
+    {
+      "id": 9,
+      "x": 8,
+      "y": 1,
+      "type": "train",
+      "label": "書庫",
+      "description": "静かに書物と向き合い、知見を広げる。",
+      "stat": "mind",
+      "next_ids": [
+        8,
+        10
+      ]
+    },
+    {
+      "id": 10,
+      "x": 7,
+      "y": 1,
+      "type": "shop",
+      "label": "雑貨の露店",
+      "description": "ちょっとした買い物ができそうだ。",
+      "next_ids": [
+        9,
+        11
+      ]
+    },
+    {
+      "id": 11,
+      "x": 6,
+      "y": 1,
+      "type": "encounter",
+      "label": "怪しい人影",
+      "description": "闇に潜む何かが動いた。",
+      "strong": false,
+      "route_profile": "reward",
+      "route_label": "怪しい人影へ",
+      "next_ids": [
+        10,
+        12,
+        24
+      ]
+    },
+    {
+      "id": 12,
+      "x": 5,
+      "y": 1,
+      "type": "rest",
+      "label": "旅籠",
+      "description": "一晩の宿を借り、疲れを癒す。",
+      "next_ids": [
+        11,
+        13
+      ]
+    },
+    {
+      "id": 13,
+      "x": 4,
+      "y": 1,
+      "type": "train",
+      "label": "型稽古場",
+      "description": "型を繰り返し、基礎を固める。",
+      "stat": "str",
+      "next_ids": [
+        12,
+        14
+      ]
+    },
+    {
+      "id": 14,
+      "x": 3,
+      "y": 1,
+      "type": "event",
+      "label": "ふとした選択",
+      "description": "立ち止まって考える時間ができた。",
+      "category": "resolve",
+      "route_profile": "safe",
+      "route_label": "ふとした選択へ",
+      "next_ids": [
+        3,
+        13,
+        15
+      ]
+    },
+    {
+      "id": 15,
+      "x": 2,
+      "y": 1,
+      "type": "encounter",
+      "label": "手練れとの遭遇",
+      "description": "並々ならぬ気配を纏った相手だ。",
+      "strong": true,
+      "next_ids": [
+        14,
+        16
+      ]
+    },
+    {
+      "id": 16,
+      "x": 1,
+      "y": 1,
+      "type": "rest",
+      "label": "木陰の休憩所",
+      "description": "涼しい木陰でひと息つく。",
+      "next_ids": [
+        15,
+        17
+      ]
+    },
+    {
+      "id": 17,
+      "x": 0,
+      "y": 1,
+      "type": "shop",
+      "label": "旅の商店",
+      "description": "旅に役立ちそうな品が並ぶ。",
+      "next_ids": [
+        16,
+        18
+      ]
+    },
+    {
+      "id": 18,
+      "x": 0,
+      "y": 2,
+      "type": "train",
+      "label": "鍛錬場",
+      "description": "重い得物を振り込み、体をいじめ抜く。",
+      "stat": "str",
+      "next_ids": [
+        17,
+        19
+      ]
+    },
+    {
+      "id": 19,
+      "x": 1,
+      "y": 2,
+      "type": "encounter",
+      "label": "野盗の襲撃",
+      "description": "行く手を阻む相手が現れた。",
+      "strong": false,
+      "next_ids": [
+        18,
+        20
+      ]
+    },
+    {
+      "id": 20,
+      "x": 2,
+      "y": 2,
+      "type": "event",
+      "label": "道中の物思い",
+      "description": "これまでの旅路をふと振り返る。",
+      "category": "story",
+      "next_ids": [
+        19,
+        21
+      ]
+    },
+    {
+      "id": 21,
+      "x": 3,
+      "y": 2,
+      "type": "train",
+      "label": "私塾",
+      "description": "師の話に耳を傾け、視野を広げる。",
+      "stat": "mind",
+      "next_ids": [
+        20,
+        22
+      ]
+    },
+    {
+      "id": 22,
+      "x": 4,
+      "y": 2,
+      "type": "shop",
+      "label": "行商人",
+      "description": "旅の商人が品物を並べている。",
+      "next_ids": [
+        21,
+        23
+      ]
+    },
+    {
+      "id": 23,
+      "x": 5,
+      "y": 2,
+      "type": "encounter",
+      "label": "見張りとの小競り合い",
+      "description": "気配を感じて身構える。",
+      "strong": false,
+      "next_ids": [
+        22,
+        24
+      ]
+    },
+    {
+      "id": 24,
+      "x": 6,
+      "y": 2,
+      "type": "rest",
+      "label": "湧き水",
+      "description": "澄んだ水で喉を潤し、旅を続ける。",
+      "route_profile": "training",
+      "route_label": "湧き水へ",
+      "next_ids": [
+        11,
+        23,
+        25
+      ]
+    },
+    {
+      "id": 25,
+      "x": 7,
+      "y": 2,
+      "type": "train",
+      "label": "道場",
+      "description": "汗を流して自分を鍛える。",
+      "stat": "str",
+      "next_ids": [
+        24,
+        26
+      ]
+    },
+    {
+      "id": 26,
+      "x": 8,
+      "y": 2,
+      "type": "event",
+      "label": "旅の一幕",
+      "description": "道中でちょっとした出来事に出会った。",
+      "category": "daily",
+      "next_ids": [
+        25,
+        27
+      ]
+    },
+    {
+      "id": 27,
+      "x": 8,
+      "y": 3,
+      "type": "encounter",
+      "label": "怪しい人影",
+      "description": "闇に潜む何かが動いた。",
+      "strong": false,
+      "next_ids": [
+        26,
+        28
+      ]
+    },
+    {
+      "id": 28,
+      "x": 7,
+      "y": 3,
+      "type": "rest",
+      "label": "古い祠",
+      "description": "道中でふと足を止めた。静かな時間が心を落ち着けてくれる。",
+      "next_ids": [
+        27,
+        29
+      ]
+    },
+    {
+      "id": 29,
+      "x": 6,
+      "y": 3,
+      "type": "shop",
+      "label": "雑貨の露店",
+      "description": "ちょっとした買い物ができそうだ。",
+      "next_ids": [
+        28,
+        30
+      ]
+    },
+    {
+      "id": 30,
+      "x": 5,
+      "y": 3,
+      "type": "train",
+      "label": "礼法教室",
+      "description": "所作を磨き、立ち居振る舞いに芯が通る。",
+      "stat": "charm",
+      "next_ids": [
+        29,
+        31
+      ]
+    },
+    {
+      "id": 31,
+      "x": 4,
+      "y": 3,
+      "type": "encounter",
+      "label": "手練れとの遭遇",
+      "description": "並々ならぬ気配を纏った相手だ。",
+      "strong": true,
+      "next_ids": [
+        30,
+        32
+      ]
+    },
+    {
+      "id": 32,
+      "x": 3,
+      "y": 3,
+      "type": "event",
+      "label": "路傍の出会い",
+      "description": "何気ないやり取りが、後の糧になる。",
+      "category": "daily",
+      "route_profile": "recovery",
+      "route_label": "路傍の出会いへ",
+      "next_ids": [
+        31,
+        33,
+        39
+      ]
+    },
+    {
+      "id": 33,
+      "x": 2,
+      "y": 3,
+      "type": "train",
+      "label": "書庫",
+      "description": "静かに書物と向き合い、知見を広げる。",
+      "stat": "mind",
+      "next_ids": [
+        32,
+        34
+      ]
+    },
+    {
+      "id": 34,
+      "x": 1,
+      "y": 3,
+      "type": "shop",
+      "label": "旅の商店",
+      "description": "旅に役立ちそうな品が並ぶ。",
+      "next_ids": [
+        33,
+        35
+      ]
+    },
+    {
+      "id": 35,
+      "x": 0,
+      "y": 3,
+      "type": "encounter",
+      "label": "野盗の襲撃",
+      "description": "行く手を阻む相手が現れた。",
+      "strong": false,
+      "next_ids": [
+        34,
+        36
+      ]
+    },
+    {
+      "id": 36,
+      "x": 0,
+      "y": 4,
+      "type": "rest",
+      "label": "旅籠",
+      "description": "一晩の宿を借り、疲れを癒す。",
+      "next_ids": [
+        35,
+        37
+      ]
+    },
+    {
+      "id": 37,
+      "x": 1,
+      "y": 4,
+      "type": "train",
+      "label": "型稽古場",
+      "description": "型を繰り返し、基礎を固める。",
+      "stat": "str",
+      "next_ids": [
+        36,
+        38
+      ]
+    },
+    {
+      "id": 38,
+      "x": 2,
+      "y": 4,
+      "type": "event",
+      "label": "ふとした選択",
+      "description": "立ち止まって考える時間ができた。",
+      "category": "resolve",
+      "next_ids": [
+        37,
+        39
+      ]
+    },
+    {
+      "id": 39,
+      "x": 3,
+      "y": 4,
+      "type": "encounter",
+      "label": "見張りとの小競り合い",
+      "description": "気配を感じて身構える。",
+      "strong": false,
+      "route_profile": "danger",
+      "route_label": "見張りとの小競り合いへ",
+      "next_ids": [
+        32,
+        38,
+        40
+      ]
+    },
+    {
+      "id": 40,
+      "x": 4,
+      "y": 4,
+      "type": "rest",
+      "label": "木陰の休憩所",
+      "description": "涼しい木陰でひと息つく。",
+      "next_ids": [
+        39,
+        41
+      ]
+    },
+    {
+      "id": 41,
+      "x": 5,
+      "y": 4,
+      "type": "shop",
+      "label": "行商人",
+      "description": "旅の商人が品物を並べている。",
+      "next_ids": [
+        40,
+        42
+      ]
+    },
+    {
+      "id": 42,
+      "x": 6,
+      "y": 4,
+      "type": "train",
+      "label": "鍛錬場",
+      "description": "重い得物を振り込み、体をいじめ抜く。",
+      "stat": "str",
+      "next_ids": [
+        41,
+        43
+      ]
+    },
+    {
+      "id": 43,
+      "x": 7,
+      "y": 4,
+      "type": "encounter",
+      "label": "怪しい人影",
+      "description": "闇に潜む何かが動いた。",
+      "strong": false,
+      "next_ids": [
+        42,
+        44
+      ]
+    },
+    {
+      "id": 44,
+      "x": 8,
+      "y": 4,
+      "type": "boss",
+      "label": "最終決戦",
+      "description": "ルートの終点で大きな試練が待ち受けている。",
+      "next_ids": [
+        43
       ]
     }
-  }
+  ]
 }

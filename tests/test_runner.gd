@@ -4,14 +4,13 @@ extends SceneTree
 ## GUTなどの外部アドオンに依存せず、GameState.gd の重要な不変条件を検証する。
 
 const GameStateScript := preload("res://scripts/GameState.gd")
-const BoardGeneratorScript := preload("res://scripts/BoardGenerator.gd")
 
 var checks := 0
 var failures := 0
 
 
 func _init() -> void:
-	_test_board_generator_produces_valid_graph()
+	_test_static_board_is_a_valid_graph()
 	_test_encounter_tiering()
 	_test_train_all_respects_route_profile_bonus()
 	_test_exhaustion_defeat_returns_to_start()
@@ -21,7 +20,7 @@ func _init() -> void:
 	_test_boss_always_stops_even_as_a_pass_through_tile()
 	_test_backtrack_into_dead_end_turns_around_instead_of_finishing()
 	_test_multi_step_move_stops_early_at_fork_and_carries_remainder()
-	_test_save_load_preserves_generated_board()
+	_test_save_load_preserves_board()
 
 	if failures > 0:
 		print("FAILED: %d/%d checks failed" % [failures, checks])
@@ -40,7 +39,7 @@ func _assert(condition: bool, message: String) -> void:
 
 func _new_game_state() -> Node:
 	# --script 実行では _ready() のタイミングが本来のゲーム実行と異なり保証されないため、
-	# 初期化処理を明示的に呼び出して決定的にする。盤面は毎回ランダム生成される。
+	# 初期化処理を明示的に呼び出して決定的にする。盤面は data/board.json の固定盤面。
 	var gs := GameStateScript.new()
 	root.add_child(gs)
 	gs.load_content()
@@ -85,57 +84,68 @@ func _make_diamond_board() -> Dictionary:
 func _next_ids_of(spaces: Array, id: int) -> Array:
 	for space in spaces:
 		if int(space.get("id", -1)) == id:
-			return space.get("next_ids", [])
+			# JSONから読み込んだ直後の next_ids は float の可能性があり、
+			# Array.has() は int/float を暗黙変換しないため、ここで int に
+			# 正規化しておく(GameState.get_next_ids() と同じ扱いに揃える)。
+			var ids: Array = []
+			for raw_id in space.get("next_ids", []):
+				ids.append(int(raw_id))
+			return ids
 	return []
 
 
-func _test_board_generator_produces_valid_graph() -> void:
+func _test_static_board_is_a_valid_graph() -> void:
+	# 盤面はもうランダム生成せず、data/board.json に手で配置した固定の盤面を
+	# そのまま使う。ここでは読み込んだ盤面そのものが壊れていないこと
+	# (双方向グラフ・全マス到達可能・ボスは1つだけ)に加えて、
+	# 「分岐(来た道を除いて2方向以上進める=次数3以上)が多すぎない」ことも
+	# 回帰テストとして確認する(以前ランダム生成だった頃、分岐が多すぎて
+	# 選ぶのが面倒という指摘があったため)。
 	var gs := _new_game_state()
+	var board: Dictionary = gs.board_data
+	var spaces: Array = board.get("spaces", [])
+	_assert(spaces.size() >= 20, "static board should be reasonably packed with tiles (got %d)" % spaces.size())
 
-	for trial in range(6):
-		gs.rng.seed = trial * 977 + 13
-		var board: Dictionary = BoardGeneratorScript.generate(gs.board_theme, gs.rng)
-		var spaces: Array = board.get("spaces", [])
-		_assert(spaces.size() > 10, "trial %d: generated board should be reasonably packed with tiles (got %d)" % [trial, spaces.size()])
+	var ids := {}
+	for space in spaces:
+		ids[int(space.get("id", -1))] = true
+	for space in spaces:
+		for next_id in space.get("next_ids", []):
+			_assert(ids.has(int(next_id)), "space %s references missing next_id %s" % [space.get("id"), next_id])
 
-		var ids := {}
-		for space in spaces:
-			ids[int(space.get("id", -1))] = true
-		for space in spaces:
-			for next_id in space.get("next_ids", []):
-				_assert(ids.has(int(next_id)), "trial %d: space %s references missing next_id %s" % [trial, space.get("id"), next_id])
+	# 双方向グラフであること: AがBにつながっているなら、BもAにつながっている。
+	for space in spaces:
+		var from_id := int(space.get("id", -1))
+		for next_id in space.get("next_ids", []):
+			var reverse_ids: Array = _next_ids_of(spaces, int(next_id))
+			_assert(reverse_ids.has(from_id), "edge %d->%d should also exist as %d->%d (undirected)" % [from_id, next_id, next_id, from_id])
 
-		# 双方向グラフであること: AがBにつながっているなら、BもAにつながっている。
-		for space in spaces:
-			var from_id := int(space.get("id", -1))
-			for next_id in space.get("next_ids", []):
-				var reverse_ids: Array = _next_ids_of(spaces, int(next_id))
-				_assert(reverse_ids.has(from_id), "trial %d: edge %d->%d should also exist as %d->%d (undirected)" % [trial, from_id, next_id, next_id, from_id])
+	var start_id := int(board.get("start_id", 0))
+	var visited := {}
+	var queue := [start_id]
+	while not queue.is_empty():
+		var current: int = queue.pop_front()
+		if visited.has(current):
+			continue
+		visited[current] = true
+		for next_id in _next_ids_of(spaces, current):
+			if not visited.has(int(next_id)):
+				queue.append(int(next_id))
+	for space in spaces:
+		_assert(visited.has(int(space.get("id", -1))), "space %s is unreachable from start_id" % space.get("id", "?"))
+		_assert(not space.get("next_ids", []).is_empty(), "space %s has no connections at all" % space.get("id", "?"))
 
-		var start_id := int(board.get("start_id", 0))
-		var visited := {}
-		var queue := [start_id]
-		while not queue.is_empty():
-			var current: int = queue.pop_front()
-			if visited.has(current):
-				continue
-			visited[current] = true
-			for next_id in _next_ids_of(spaces, current):
-				if not visited.has(int(next_id)):
-					queue.append(int(next_id))
-		for space in spaces:
-			_assert(visited.has(int(space.get("id", -1))), "trial %d: space %s is unreachable from start_id" % [trial, space.get("id", "?")])
-			_assert(not space.get("next_ids", []).is_empty(), "trial %d: space %s has no connections at all" % [trial, space.get("id", "?")])
-
-		var boss_count := 0
-		var branch_count := 0
-		for space in spaces:
-			if String(space.get("type", "")) == "boss":
-				boss_count += 1
-			if space.get("next_ids", []).size() > 1:
-				branch_count += 1
-		_assert(boss_count == 1, "trial %d: expected exactly one boss tile, got %d" % [trial, boss_count])
-		_assert(branch_count > 0, "trial %d: expected at least one branching tile in a packed board" % trial)
+	var boss_count := 0
+	var branch_count := 0
+	for space in spaces:
+		if String(space.get("type", "")) == "boss":
+			boss_count += 1
+		if space.get("next_ids", []).size() >= 3:
+			branch_count += 1
+	_assert(boss_count == 1, "expected exactly one boss tile, got %d" % boss_count)
+	_assert(branch_count > 0, "expected at least one branching tile")
+	var branch_ratio := float(branch_count) / float(spaces.size())
+	_assert(branch_ratio <= 0.3, "branch points should stay rare so choices don't feel tedious (got %.1f%%)" % (branch_ratio * 100.0))
 
 	gs.queue_free()
 
@@ -274,9 +284,9 @@ func _test_load_game_repairs_missing_fields() -> void:
 	gs.queue_free()
 
 
-func _test_save_load_preserves_generated_board() -> void:
-	# 盤面は起動のたびにランダム生成されるため、セーブ/ロードで同じ盤面に
-	# 戻れることを実際のファイル読み書きで検証する。
+func _test_save_load_preserves_board() -> void:
+	# 盤面は固定だが、セーブに含めた盤面情報がロード時に正しく復元される
+	# ことを実際のファイル読み書きで検証する。
 	var gs := _new_game_state()
 	var original_start_id := int(gs.board_data.get("start_id", -1))
 	var original_space_count: int = gs.get_spaces().size()

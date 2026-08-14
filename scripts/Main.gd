@@ -248,8 +248,9 @@ func _build_map_panel() -> Control:
 
 
 func _rebuild_board_map() -> void:
-	# 盤面は New/Load のたびに変わりうる(毎回ランダム生成されるため)ので、
-	# マスのボタンと駒をそのつど作り直す。
+	# 盤面自体は固定だが、Load でセーブ時点の盤面(古いセーブなら別内容の
+	# 可能性もある)に差し替わることがあるため、マスのボタンと駒はそのつど
+	# 作り直す。
 	board_map.configure(game_state.board_data)
 	_clear_children(board_map)
 	board_buttons.clear()

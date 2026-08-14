@@ -6,7 +6,6 @@ signal log_added(text: String)
 signal damage_popup(amount: int, target: String)
 signal piece_moved(space_id: int)
 
-const BOARD_GENERATOR := preload("res://scripts/BoardGenerator.gd")
 const BOARD_PATH := "res://data/board.json"
 const EVENTS_PATH := "res://data/events.json"
 const ENEMIES_PATH := "res://data/enemies.json"
@@ -22,8 +21,7 @@ const ROUTE_PROFILES := {
 }
 
 var rng := RandomNumberGenerator.new()
-var board_theme: Dictionary = {} # data/board.json: 盤面をランダム生成するための設定
-var board_data: Dictionary = {} # 実際にプレイ中の盤面(new_game() のたびに生成し直す)
+var board_data: Dictionary = {} # data/board.json に固定で書かれた盤面(桃鉄のようなランダム生成はしない)
 var events_data: Dictionary = {}
 var enemies_data: Dictionary = {}
 var characters_data: Dictionary = {}
@@ -49,7 +47,7 @@ func _play_sfx(id: String) -> void:
 
 
 func load_content() -> void:
-	board_theme = _load_json(BOARD_PATH, {})
+	board_data = _load_json(BOARD_PATH, {})
 	events_data = _load_json(EVENTS_PATH, {"events": []})
 	enemies_data = _load_json(ENEMIES_PATH, {"enemies": []})
 	characters_data = _load_json(CHARACTERS_PATH, {"player": {}})
@@ -74,9 +72,13 @@ func _load_json(path: String, fallback: Dictionary) -> Dictionary:
 
 
 func new_game(forced_board: Dictionary = {}) -> void:
-	# 毎回ランダムに盤面を生成し直す(桃鉄のようなマス目が詰まったボードにするため)。
-	# forced_board はテストや特殊用途で決まった盤面を差し込みたい場合に使う。
-	board_data = forced_board if not forced_board.is_empty() else BOARD_GENERATOR.generate(board_theme, rng)
+	# 盤面は data/board.json に手で配置した固定のものを使う(New を押しても
+	# 毎回同じ盤面のまま)。forced_board はテストや特殊用途で決まった盤面を
+	# 差し込みたい場合に使う。
+	if not forced_board.is_empty():
+		board_data = forced_board
+	elif board_data.is_empty():
+		board_data = _load_json(BOARD_PATH, {})
 
 	var base: Dictionary = characters_data.get("player", {})
 	var stats: Dictionary = base.get("stats", {"str": 5, "charm": 5, "mind": 5, "resolve": 0}).duplicate(true)
@@ -730,8 +732,8 @@ func save_game() -> void:
 	if file == null:
 		add_log("セーブに失敗しました。")
 		return
-	# 盤面は起動のたびにランダム生成し直すため、ロード後も同じ盤面に戻れるよう
-	# player と一緒に board_data(生成済みの実際の盤面)も保存する。
+	# 盤面自体は固定だが、将来 board.json を差し替えても古いセーブが当時の
+	# 盤面のまま復元できるよう、player と一緒に board_data も保存しておく。
 	file.store_string(JSON.stringify({"player": player, "board": board_data}, "\t"))
 	add_log("セーブしました。")
 	changed.emit()
@@ -753,7 +755,7 @@ func load_game() -> void:
 	if typeof(parsed) == TYPE_DICTIONARY and parsed.has("player"):
 		if typeof(parsed.get("board")) == TYPE_DICTIONARY and not parsed["board"].is_empty():
 			board_data = parsed["board"]
-		# 盤面情報の無い古いセーブの場合は、現在生成済みの盤面をそのまま使う
+		# 盤面情報の無い古いセーブの場合は、現在読み込み済みの固定盤面をそのまま使う
 		# (_ensure_player_route_fields が position の不整合を start_id に補正する)。
 		player = parsed["player"]
 		_ensure_player_route_fields()
