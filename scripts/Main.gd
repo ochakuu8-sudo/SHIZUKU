@@ -1069,6 +1069,13 @@ func _center_current_space(position: int, animate: bool = true) -> void:
 
 
 func _apply_map_center(center: Vector2, animate: bool = true) -> void:
+	# board_scroll.size は、起動直後(_ready() から call_deferred で呼ばれた
+	# 直後)だとレイアウトがまだ収束しておらず、実際より大きい異常値を返す
+	# ことがある(特に縦方向)。1フレーム待ってレイアウトが確定してから
+	# 読み取ることで、初回表示でも正しい位置にセンタリングされるようにする。
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return
 	var view_size := board_scroll.size
 	var target_h := maxi(0, int(center.x - view_size.x * 0.42))
 	var target_v := maxi(0, int(center.y - view_size.y * 0.58))
